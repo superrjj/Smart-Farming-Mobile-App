@@ -4,7 +4,7 @@
     "slug": "SmartFarmingApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./app/(tabs)/beanly_logo.png",
+    "icon": "./assets/images/beanly_logo.png",
     "scheme": "smartfarmingapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -16,7 +16,7 @@
       "package": "com.beanly.app",
       "adaptiveIcon": {
         "backgroundColor": "#3E9B4F",
-        "foregroundImage": "./app/(tabs)/beanly_logo.png"
+        "foregroundImage": "./assets/images/beanly_logo.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -42,7 +42,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./app/(tabs)/beanly_logo.png",
+          "icon": "./assets/images/beanly_logo.png",
           "color": "#3E9B4F",
           "sounds": []
         }
@@ -54,7 +54,11 @@
     },
     "extra": {
       "supabaseUrl": "https://xzouepokakzubwjogmdr.supabase.co",
-      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6b3VlcG9rYWt6dWJ3am9nbWRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyODY3MTUsImV4cCI6MjA4MDg2MjcxNX0.kqvEprlsrAmFt6qYTNDPvhWpAsLJJU_oKf-kIhlf2bc"
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6b3VlcG9rYWt6dWJ3am9nbWRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyODY3MTUsImV4cCI6MjA4MDg2MjcxNX0.kqvEprlsrAmFt6qYTNDPvhWpAsLJJU_oKf-kIhlf2bc",
+      "router": {},
+      "eas": {
+        "projectId": "2874d9dd-084b-4bee-ab50-7bbe422369ac"
+      }
     }
   }
 }

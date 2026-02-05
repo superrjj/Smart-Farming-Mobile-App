@@ -47,6 +47,8 @@ export default function LoginScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [countdown, setCountdown] = useState(0);
+  const [forgotEmailMessage, setForgotEmailMessage] = useState<string | null>(null);
+  const [forgotEmailMessageType, setForgotEmailMessageType] = useState<'success' | 'error' | null>(null);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -113,6 +115,10 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
+      // Reset previous message
+      setForgotEmailMessage(null);
+      setForgotEmailMessageType(null);
+
       // Check if email exists in Supabase
       const { data: existingUser, error: fetchError } = await supabase
         .from('user_profiles')
@@ -121,7 +127,8 @@ export default function LoginScreen() {
         .single();
 
       if (fetchError || !existingUser) {
-        Alert.alert('Failed', 'Email address is not registered');
+        setForgotEmailMessage('Email address is not registered');
+        setForgotEmailMessageType('error');
         setLoading(false);
         return;
       }
@@ -132,7 +139,8 @@ export default function LoginScreen() {
       
       setForgotStep(2);
       startCountdown();
-      Alert.alert('Success', 'Verification code sent to your email');
+      setForgotEmailMessage('Verification code sent to your email');
+      setForgotEmailMessageType('success');
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to send verification code');
     } finally {
@@ -207,6 +215,8 @@ export default function LoginScreen() {
     setConfirmPassword('');
     setForgotStep(1);
     setCountdown(0);
+    setForgotEmailMessage(null);
+    setForgotEmailMessageType(null);
   };
 
   return (
@@ -226,7 +236,7 @@ export default function LoginScreen() {
               <View style={styles.cardHeader}>
                 <View style={styles.logoContainer}>
                   <Image
-                    source={require('../\(tabs\)/logo_string_beans.png')}
+                    source={require('@/assets/images/logo_string_beans.png')}
                     style={styles.logo}
                     resizeMode="contain"
                   />
@@ -237,7 +247,7 @@ export default function LoginScreen() {
               <View style={styles.inputWrapper}>
                 <FontAwesome name="envelope" size={16} color={colors.brandGrayText} style={styles.inputIcon} />
                 <TextInput
-                  placeholder="Email address"
+                  placeholder="Email"
                   placeholderTextColor={colors.brandGrayText}
                   keyboardType="email-address"
                   autoCapitalize="none"
@@ -337,11 +347,26 @@ export default function LoginScreen() {
                     placeholder="Email address"
                     placeholderTextColor={colors.brandGrayText}
                     value={forgotEmail}
-                    onChangeText={setForgotEmail}
+                    onChangeText={(text) => {
+                      setForgotEmail(text);
+                      setForgotEmailMessage(null);
+                      setForgotEmailMessageType(null);
+                    }}
                     keyboardType="email-address"
                     autoCapitalize="none"
                   />
                 </View>
+                {forgotEmailMessage && (
+                  <Text
+                    style={[
+                      styles.forgotEmailMessage,
+                      forgotEmailMessageType === 'success'
+                        ? styles.forgotEmailMessageSuccess
+                        : styles.forgotEmailMessageError,
+                    ]}>
+                    {forgotEmailMessage}
+                  </Text>
+                )}
                 <TouchableOpacity
                   style={[styles.sendButton, loading && styles.sendButtonDisabled]}
                   onPress={handleSendCode}
@@ -453,7 +478,7 @@ const styles = StyleSheet.create({
   greenBackground: {
     backgroundColor: colors.brandGreen,
     paddingTop: 40,
-    paddingBottom: 100,
+    paddingBottom: 130,
     paddingHorizontal: 28,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
@@ -478,7 +503,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   cardContainer: {
-    marginTop: -40,
+    marginTop: -80,
     paddingHorizontal: 20,
     paddingBottom: 40,
   },
@@ -488,7 +513,7 @@ const styles = StyleSheet.create({
     padding: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.2,
     shadowRadius: 12,
     elevation: 8,
   },
@@ -725,5 +750,19 @@ const styles = StyleSheet.create({
   },
   resendButtonTextDisabled: {
     color: colors.brandGrayText,
+  },
+  forgotEmailMessage: {
+    marginTop: -8,
+    marginBottom: 4,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    textAlign: 'left',
+    width: '100%',
+  },
+  forgotEmailMessageSuccess: {
+    color: colors.brandGreen,
+  },
+  forgotEmailMessageError: {
+    color: '#FF3B30',
   },
 });

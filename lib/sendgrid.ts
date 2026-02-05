@@ -262,8 +262,8 @@ export async function sendPasswordResetCode(email: string, verificationCode: str
         <div class="container">
           <div class="header">
             <div class="logo">
-              <div class="logo-text">Smart Irrigation & Monitor</div>
-              <div class="header-subtitle">for String Beans</div>
+              <div class="logo-text">Beanly</div>
+              <div class="header-subtitle">Smart Farming for String Beans</div>
             </div>
           </div>
           
@@ -271,7 +271,7 @@ export async function sendPasswordResetCode(email: string, verificationCode: str
             <div class="greeting">Hello! 👋</div>
             
             <p class="message">
-              We received a request to reset the password for your Smart Irrigation & Monitor App account. 
+              We received a request to reset the password for your Beanly account. 
               Use the verification code below to proceed with resetting your password.
             </p>
             
@@ -307,7 +307,7 @@ export async function sendPasswordResetCode(email: string, verificationCode: str
           
           <div class="footer">
             <p class="footer-text">
-              This is an automated message from Smart Irrigation & Monitor App.<br>
+              This is an automated message from Beanly.<br>
               Please do not reply to this email.
             </p>
             <div class="footer-links">
@@ -331,16 +331,16 @@ export async function sendPasswordResetCode(email: string, verificationCode: str
     body: JSON.stringify({
       personalizations: [{
         to: [{ email }],
-        subject: 'Password Reset Verification Code - Smart Irrigation & Monitor App',
+        subject: 'Password Reset Verification Code - Beanly',
       }],
       from: { 
         email: SENDGRID_CONFIG.fromEmail,
-        name: 'Smart Irrigation & Monitor App'
+        name: 'Beanly'
       },
       content: [
         {
           type: 'text/plain',
-          value: `Password Reset Verification Code\n\nYour verification code is: ${verificationCode}\n\nThis code will expire in 10 minutes.\n\nImportant:\n- Enter this code in the app to reset your password\n- Do not share this code with anyone\n- If you didn't request this, please ignore this email\n\n---\nSmart Farming Irrigation System\nThis is an automated message. Please do not reply.`,
+          value: `Password Reset Verification Code\n\nYour verification code is: ${verificationCode}\n\nThis code will expire in 10 minutes.\n\nImportant:\n- Enter this code in the app to reset your password\n- Do not share this code with anyone\n- If you didn't request this, please ignore this email\n\n---\nBeanly\nThis is an automated message. Please do not reply.`,
         },
         {
           type: 'text/html',

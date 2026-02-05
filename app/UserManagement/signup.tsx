@@ -344,7 +344,7 @@ export default function SignupScreen() {
                 <Text style={styles.inlineFooterText}>Already have an account?</Text>
                 <Link href="/UserManagement/login" asChild>
                   <TouchableOpacity activeOpacity={0.7}>
-                    <Text style={styles.inlineFooterLink}>Log In</Text>
+                    <Text style={styles.inlineFooterLink}>Login</Text>
                   </TouchableOpacity>
                 </Link>
               </View>
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
   greenBackground: {
     backgroundColor: colors.brandGreen,
     paddingTop: 40,
-    paddingBottom: 100,
+    paddingBottom: 130,
     paddingHorizontal: 28,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   cardContainer: {
-    marginTop: -40,
+    marginTop: -80,
     paddingHorizontal: 20,
     paddingBottom: 40,
   },
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
     padding: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.2,
     shadowRadius: 12,
     elevation: 8,
   },

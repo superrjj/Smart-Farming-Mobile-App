@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { ActivityIndicator, Image, StyleSheet, View, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,26 +9,34 @@ const colors = {
 
 export default function SplashScreen() {
   const router = useRouter();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Fade-in animation for logo + loader
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+
     // Navigate to login after 3 seconds
     const timer = setTimeout(() => {
       router.replace('/UserManagement/login');
-    }, 3000);
+    }, 4000);
 
     return () => clearTimeout(timer);
-  }, [router]);
+  }, [router, fadeAnim]);
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
         <Image
-          source={require('../../app/(tabs)/logo_string_beans.png')}
+          source={require('@/assets/images/logo_string_beans.png')}
           style={styles.logo}
           resizeMode="contain"
         />
         <ActivityIndicator size="large" color="#fff" style={styles.loader} />
-      </View>
+      </Animated.View>
     </SafeAreaView>
   );
 }
