@@ -1,22 +1,22 @@
 {
   "expo": {
-    "name": "SmartFarmingApp",
+    "name": "Beanly",
     "slug": "SmartFarmingApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./app/(tabs)/beanly_logo.png",
     "scheme": "smartfarmingapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.beanly.app"
     },
     "android": {
+      "package": "com.beanly.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#3E9B4F",
+        "foregroundImage": "./app/(tabs)/beanly_logo.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -42,8 +42,8 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/icon.png",
-          "color": "#22C55E",
+          "icon": "./app/(tabs)/beanly_logo.png",
+          "color": "#3E9B4F",
           "sounds": []
         }
       ]

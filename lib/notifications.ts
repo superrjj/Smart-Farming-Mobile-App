@@ -1,6 +1,11 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+// Store notification response handler and subscription
+let notificationResponseHandler: ((response: Notifications.NotificationResponse) => void) | null = null;
+let notificationResponseSubscription: Notifications.Subscription | null = null;
+let notificationReceivedSubscription: Notifications.Subscription | null = null;
+
 // Configure notification behavior
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -11,6 +16,43 @@ Notifications.setNotificationHandler({
     shouldShowList: true,
   }),
 });
+
+// Set up notification response listener
+export function setNotificationResponseHandler(
+  handler: (response: Notifications.NotificationResponse) => void
+) {
+  notificationResponseHandler = handler;
+  
+  // Listen for notification responses (when user taps notification)
+  notificationResponseSubscription = Notifications.addNotificationResponseReceivedListener(handler);
+  
+  // Get last notification response (if app was opened from notification)
+  Notifications.getLastNotificationResponseAsync().then((response) => {
+    if (response) {
+      handler(response);
+    }
+  });
+}
+
+// Set up notification received listener (for foreground notifications)
+export function setNotificationReceivedHandler(
+  handler: (notification: Notifications.Notification) => void
+) {
+  notificationReceivedSubscription = Notifications.addNotificationReceivedListener(handler);
+}
+
+// Remove notification response listener
+export function removeNotificationResponseHandler() {
+  if (notificationResponseSubscription) {
+    notificationResponseSubscription.remove();
+    notificationResponseSubscription = null;
+  }
+  if (notificationReceivedSubscription) {
+    notificationReceivedSubscription.remove();
+    notificationReceivedSubscription = null;
+  }
+  notificationResponseHandler = null;
+}
 
 // Request notification permissions
 export async function requestNotificationPermissions(): Promise<boolean> {

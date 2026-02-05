@@ -213,20 +213,27 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView bounces={false} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.phoneFrame}>
-          <View style={styles.content}>
+          {/* Green Background Section */}
+          <View style={styles.greenBackground}>
             <View style={styles.header}>
-              <Image
-                source={{
-                  uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAQgDWUXUvaG8Sig9YPNaUo4ileQEXp1kF4z-ASwmIk9PVBpqN7AiYb_pWGwP61LLl8bnGoQ81vGcEnRA2HAiJuH723dJm07YUIDCTV76QetcaxBhkDxlJhmKjwPtWMwh-r69MOAFck-eI-hltoxzfcao7-Cm32auwF1-qHuQCXtilsII_P1Y0A2QZgIu1PFIKunehRgNSO_JDGUX5keuTk28ByeU2FJbe5gyy1VllzwqN-ksiFKH6vFgv9ccAQgoAd_tauBvWTG93q',
-                }}
-                style={styles.logo}
-                resizeMode="contain"
-              />
-              <Text style={styles.title}>Smart Irrigation &amp; Monitor</Text>
-              <Text style={styles.subtitle}>Login</Text>
+              <Text style={styles.title}>Hello Welcome Back!</Text>
             </View>
+          </View>
 
-            <View style={styles.form}>
+          {/* White Card Section */}
+          <View style={styles.cardContainer}>
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.logoContainer}>
+                  <Image
+                    source={require('../\(tabs\)/logo_string_beans.png')}
+                    style={styles.logo}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.form}>
               <View style={styles.inputWrapper}>
                 <FontAwesome name="envelope" size={16} color={colors.brandGrayText} style={styles.inputIcon} />
                 <TextInput
@@ -269,7 +276,7 @@ export default function LoginScreen() {
                 style={styles.forgotWrapper} 
                 activeOpacity={0.7}
                 onPress={() => setShowForgotPassword(true)}>
-                <Text style={styles.forgotText}>Forgot password?</Text>
+                <Text style={styles.forgotText}>Forgot Password?</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -277,16 +284,17 @@ export default function LoginScreen() {
                 activeOpacity={0.9}
                 onPress={handleLogin}
                 disabled={loading}>
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.loginButtonText}>Log In</Text>}
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.loginButtonText}>Login</Text>}
               </TouchableOpacity>
 
               <View style={styles.inlineFooter}>
                 <Text style={styles.inlineFooterText}>Don&apos;t have an account?</Text>
                 <Link href="/UserManagement/signup" asChild>
                   <TouchableOpacity activeOpacity={0.7}>
-                    <Text style={styles.inlineFooterLink}>Sign Up</Text>
+                    <Text style={styles.inlineFooterLink}>Create Account</Text>
                   </TouchableOpacity>
                 </Link>
+              </View>
               </View>
             </View>
           </View>
@@ -440,40 +448,65 @@ const styles = StyleSheet.create({
   },
   phoneFrame: {
     flex: 1,
-    maxWidth: 420,
-    alignSelf: 'center',
     backgroundColor: '#fff',
   },
-  content: {
-    flex: 1,
+  greenBackground: {
+    backgroundColor: colors.brandGreen,
+    paddingTop: 40,
+    paddingBottom: 100,
     paddingHorizontal: 28,
-    paddingVertical: 16,
-    justifyContent: 'center',
-    gap: 24,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   header: {
     alignItems: 'center',
     gap: 12,
   },
   logo: {
-    width: 96,
-    height: 96,
+    width: 100,
+    height: 100,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
-    fontFamily: fonts.semibold,
-    fontSize: 28,
-    color: '#000',
+    fontFamily: fonts.bold,
+    fontSize: 32,
+    color: '#fff',
     textAlign: 'center',
-  },
-  subtitle: {
-    fontFamily: fonts.medium,
-    fontSize: 18,
-    color: '#000',
     marginTop: 8,
   },
+  cardContainer: {
+    marginTop: -40,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  cardHeader: {
+    marginBottom: 24,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  cardTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 28,
+    color: '#000',
+  },
   form: {
-    gap: 14,
-    paddingTop: 8,
+    gap: 16,
   },
   inputWrapper: {
     position: 'relative',
@@ -495,28 +528,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.brandGrayBorder,
     paddingLeft: 48,
-    paddingRight: 16,
+    paddingRight: 48,
     fontFamily: fonts.regular,
     fontSize: 16,
     color: '#000',
+    backgroundColor: '#F8F8F8',
   },
   forgotWrapper: {
     alignSelf: 'flex-end',
-    marginTop: -4,
+    marginTop: 4,
+    marginBottom: 4,
   },
   forgotText: {
     fontFamily: fonts.medium,
-    fontSize: 16,
+    fontSize: 14,
     color: colors.brandBlue,
   },
   loginButton: {
     backgroundColor: colors.brandGreen,
-    borderRadius: 8,
-    paddingVertical: 8,
-    marginTop: 12,
+    borderRadius: 12,
+    paddingVertical: 16,
+    marginTop: 8,
     justifyContent: 'center',
     alignItems: 'center',
     minHeight: 50,
+    shadowColor: colors.brandGreen,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   loginButtonDisabled: {
     opacity: 0.6,
@@ -528,7 +568,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   inlineFooter: {
-    marginTop: 16,
+    marginTop: 15,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -536,12 +576,12 @@ const styles = StyleSheet.create({
   },
   inlineFooterText: {
     fontFamily: fonts.regular,
-    fontSize: 16,
+    fontSize: 15,
     color: colors.brandGrayText,
   },
   inlineFooterLink: {
     fontFamily: fonts.medium,
-    fontSize: 16,
+    fontSize: 15,
     color: colors.brandBlue,
   },
   loadingOverlay: {
@@ -558,7 +598,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontFamily: fonts.medium,
     fontSize: 16,
-    color: '#fff',
+    color: colors.brandGrayText,
   },
   // Modal styles
   modalOverlay: {

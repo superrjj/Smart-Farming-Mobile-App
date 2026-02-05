@@ -3,6 +3,7 @@ import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -184,13 +185,17 @@ export default function SignupScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
         <View style={styles.phoneFrame}>
-          <View style={styles.content}>
+          {/* Green Background Section */}
+          <View style={styles.greenBackground}>
             <View style={styles.header}>
               <Text style={styles.title}>Create Account</Text>
-              <Text style={styles.subtitle}>Register as Farmer</Text>
             </View>
+          </View>
 
-            <View style={styles.form}>
+          {/* White Card Section */}
+          <View style={styles.cardContainer}>
+            <View style={styles.card}>
+              <View style={styles.form}>
               <View style={styles.inputWrapper}>
                 <FontAwesome name="user" size={16} color={colors.brandGrayText} style={styles.inputIcon} />
                 <TextInput
@@ -218,14 +223,14 @@ export default function SignupScreen() {
                   style={styles.input}
                 />
                 {checkingEmail && (
-                  <ActivityIndicator size="small" color={colors.brandGrayText} style={styles.emailCheckIcon} />
+                  <ActivityIndicator size="small" color={colors.brandGrayText} style={styles.togglePasswordButton} />
                 )}
                 {!checkingEmail && email && email.includes('@') && (
                   <FontAwesome 
                     name={emailExists ? "times-circle" : "check-circle"} 
-                    size={16} 
+                    size={18} 
                     color={emailExists ? "#EF4444" : colors.brandGreen} 
-                    style={styles.emailCheckIcon} 
+                    style={styles.togglePasswordButton} 
                   />
                 )}
               </View>
@@ -343,6 +348,7 @@ export default function SignupScreen() {
                   </TouchableOpacity>
                 </Link>
               </View>
+              </View>
             </View>
           </View>
         </View>
@@ -361,47 +367,48 @@ const styles = StyleSheet.create({
   },
   phoneFrame: {
     flex: 1,
-    maxWidth: 420,
-    alignSelf: 'center',
     backgroundColor: '#fff',
-    width: '100%',
   },
-  content: {
-    flex: 1,
+  greenBackground: {
+    backgroundColor: colors.brandGreen,
+    paddingTop: 40,
+    paddingBottom: 100,
     paddingHorizontal: 28,
-    paddingVertical: 16,
-    justifyContent: 'center',
-    gap: 24,
-    width: '100%',
-    alignItems: 'stretch',
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   header: {
-    gap: 4,
     alignItems: 'center',
+    gap: 12,
   },
   title: {
-    fontFamily: fonts.semibold,
-    fontSize: 28,
-    color: '#000',
+    fontFamily: fonts.bold,
+    fontSize: 32,
+    color: '#fff',
     textAlign: 'center',
+    marginTop: 8,
   },
-  subtitle: {
-    fontFamily: fonts.medium,
-    fontSize: 16,
-    color: colors.brandGrayText,
-    marginTop: 4,
-    marginBottom: 16,
+  cardContainer: {
+    marginTop: -40,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
   },
   form: {
-    gap: 14,
-    marginTop: 12,
-    width: '100%',
-    alignItems: 'stretch',
+    gap: 16,
   },
   inputWrapper: {
     position: 'relative',
     justifyContent: 'center',
-    width: '100%',
   },
   inputIcon: {
     position: 'absolute',
@@ -410,27 +417,29 @@ const styles = StyleSheet.create({
   },
   input: {
     height: 52,
-    width: '100%',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.brandGrayBorder,
     paddingLeft: 48,
-    paddingRight: 16,
+    paddingRight: 48,
     fontFamily: fonts.regular,
     fontSize: 16,
     color: '#000',
+    backgroundColor: '#F8F8F8',
   },
   signupButton: {
     backgroundColor: colors.brandGreen,
-    borderRadius: 8,
-    paddingVertical: 8,
-    marginTop: 12,
+    borderRadius: 12,
+    paddingVertical: 16,
+    marginTop: 8,
     justifyContent: 'center',
     alignItems: 'center',
     minHeight: 50,
-    width: '100%',
-    minWidth: '100%',
-    alignSelf: 'stretch',
+    shadowColor: colors.brandGreen,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   signupButtonDisabled: {
     opacity: 0.6,
@@ -442,7 +451,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   inlineFooter: {
-    marginTop: 16,
+    marginTop: 15,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -450,12 +459,12 @@ const styles = StyleSheet.create({
   },
   inlineFooterText: {
     fontFamily: fonts.regular,
-    fontSize: 16,
+    fontSize: 15,
     color: colors.brandGrayText,
   },
   inlineFooterLink: {
     fontFamily: fonts.medium,
-    fontSize: 16,
+    fontSize: 15,
     color: colors.brandBlue,
   },
   passwordRequirements: {
@@ -485,7 +494,7 @@ const styles = StyleSheet.create({
   requirementMet: {
     color: colors.brandGreen,
   },
-  emailCheckIcon: {
+  togglePasswordButton: {
     position: 'absolute',
     right: 16,
     zIndex: 1,
