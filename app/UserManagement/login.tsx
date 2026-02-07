@@ -333,9 +333,11 @@ export default function LoginScreen() {
 
             {forgotStep === 1 && (
               <View style={styles.modalContent}>
-                <View style={styles.modalIconContainer}>
-                  <FontAwesome name="lock" size={32} color={colors.brandGreen} />
-                </View>
+                <Image
+                  source={require('@/assets/email-address.png')}
+                  style={styles.modalIconImage}
+                  resizeMode="contain"
+                />
                 <Text style={styles.modalTitle}>Forgot Password?</Text>
                 <Text style={styles.modalDescription}>
                   Enter your email address to receive a verification code
@@ -344,7 +346,7 @@ export default function LoginScreen() {
                   <FontAwesome name="envelope" size={16} color={colors.brandGrayText} style={styles.modalInputIcon} />
                   <TextInput
                     style={[styles.inputField, { letterSpacing: 0 }]}
-                    placeholder="Email address"
+                    placeholder="Email"
                     placeholderTextColor={colors.brandGrayText}
                     value={forgotEmail}
                     onChangeText={(text) => {
@@ -380,9 +382,11 @@ export default function LoginScreen() {
 
             {forgotStep === 2 && (
               <View style={styles.modalContent}>
-                <View style={styles.modalIconContainer}>
-                  <FontAwesome name="envelope-open" size={32} color={colors.brandGreen} />
-                </View>
+                <Image
+                  source={require('@/assets/two-factor-auth.png')}
+                  style={styles.modalIconImage}
+                  resizeMode="contain"
+                />
                 <Text style={styles.modalTitle}>Enter Verification Code</Text>
                 <Text style={styles.modalDescription}>
                   We've sent a 6-digit code to {forgotEmail}
@@ -417,9 +421,11 @@ export default function LoginScreen() {
 
             {forgotStep === 3 && (
               <View style={styles.modalContent}>
-                <View style={styles.modalIconContainer}>
-                  <FontAwesome name="unlock" size={32} color={colors.brandGreen} />
-                </View>
+                <Image
+                  source={require('@/assets/change-pass.png')}
+                  style={styles.modalIconImage}
+                  resizeMode="contain"
+                />
                 <Text style={styles.modalTitle}>New Password</Text>
                 <Text style={styles.modalDescription}>
                   Enter your new password
@@ -663,6 +669,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f9f0',
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalIconImage: {
+    width: 110,
+    height: 110,
     marginBottom: 20,
   },
   modalTitle: {

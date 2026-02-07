@@ -1,6 +1,6 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Alert,
   Image,
@@ -74,6 +74,44 @@ export default function SignupScreen() {
 
   const [emailExists, setEmailExists] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const emailCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const validateName = (nameText: string): boolean => {
+    if (!nameText.trim()) {
+      setNameError(null);
+      return true; // Allow empty for now, will validate on submit
+    }
+    // Allow letters, spaces, and common name characters like hyphens and apostrophes
+    const nameRegex = /^[a-zA-Z\s'-]+$/;
+    if (!nameRegex.test(nameText)) {
+      setNameError('Please enter a full name using letters only.');
+      return false;
+    }
+    setNameError(null);
+    return true;
+  };
+
+  const validateEmail = (emailText: string): boolean => {
+    if (!emailText.trim()) {
+      setEmailError(null);
+      return true; // Allow empty for now, will validate on submit
+    }
+    // Check if email contains gmail.com
+    if (!emailText.toLowerCase().includes('gmail.com')) {
+      setEmailError('Email must be a valid @gmail.com address.');
+      return false;
+    }
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailText)) {
+      setEmailError('Please enter a valid email address');
+      return false;
+    }
+    setEmailError(null);
+    return true;
+  };
 
   const checkEmailExists = async (emailToCheck: string) => {
     if (!emailToCheck || !emailToCheck.includes('@')) {
@@ -98,27 +136,62 @@ export default function SignupScreen() {
     }
   };
 
+  const handleNameChange = (text: string) => {
+    setName(text);
+    validateName(text);
+  };
+
   const handleEmailChange = (text: string) => {
     setEmail(text);
     setEmailExists(false);
-    if (text.includes('@')) {
-      const timeoutId = setTimeout(() => {
+    validateEmail(text);
+    
+    // Clear existing timeout
+    if (emailCheckTimeoutRef.current) {
+      clearTimeout(emailCheckTimeoutRef.current);
+    }
+    
+    // Set new timeout to check email existence
+    if (text.includes('@') && text.toLowerCase().includes('gmail.com')) {
+      emailCheckTimeoutRef.current = setTimeout(() => {
         checkEmailExists(text);
       }, 500);
-      return () => clearTimeout(timeoutId);
     }
   };
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (emailCheckTimeoutRef.current) {
+        clearTimeout(emailCheckTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleSignup = async () => {
-    if (!name || !email || !phone || !password || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
+    // Validate all fields
+    let hasErrors = false;
+
+    // Validate name
+    if (!name.trim()) {
+      setNameError('Full name is required');
+      hasErrors = true;
+    } else if (!validateName(name)) {
+      hasErrors = true;
+    }
+
+    // Validate email
+    if (!email.trim()) {
+      setEmailError('Email address is required');
+      hasErrors = true;
+    } else if (!validateEmail(email)) {
+      hasErrors = true;
     }
 
     // Check if email already exists
     if (emailExists) {
-      Alert.alert('Error', 'This email address is already registered. Please use a different email or try logging in.');
-      return;
+      setEmailError('This email address is already registered. Please use a different email.');
+      hasErrors = true;
     }
 
     // Check if all password requirements are met
@@ -132,6 +205,15 @@ export default function SignupScreen() {
 
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+
+    if (hasErrors) {
+      return;
+    }
+
+    if (!phone || !password || !confirmPassword) {
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
@@ -203,16 +285,19 @@ export default function SignupScreen() {
                   placeholderTextColor={colors.brandGrayText}
                   autoCapitalize="words"
                   value={name}
-                  onChangeText={setName}
+                  onChangeText={handleNameChange}
                   editable={!loading}
                   style={styles.input}
                 />
               </View>
+              {nameError && (
+                <Text style={styles.fieldErrorText}>{nameError}</Text>
+              )}
 
               <View style={styles.inputWrapper}>
                 <FontAwesome name="envelope" size={16} color={colors.brandGrayText} style={styles.inputIcon} />
                 <TextInput
-                  placeholder="Email address"
+                  placeholder="Email"
                   placeholderTextColor={colors.brandGrayText}
                   keyboardType="email-address"
                   autoCapitalize="none"
@@ -225,7 +310,7 @@ export default function SignupScreen() {
                 {checkingEmail && (
                   <ActivityIndicator size="small" color={colors.brandGrayText} style={styles.togglePasswordButton} />
                 )}
-                {!checkingEmail && email && email.includes('@') && (
+                {!checkingEmail && email && email.includes('@') && email.toLowerCase().includes('gmail.com') && !emailError && (
                   <FontAwesome 
                     name={emailExists ? "times-circle" : "check-circle"} 
                     size={18} 
@@ -234,9 +319,11 @@ export default function SignupScreen() {
                   />
                 )}
               </View>
-              
-              {emailExists && (
-                <Text style={styles.emailErrorText}>
+              {emailError && (
+                <Text style={styles.fieldErrorText}>{emailError}</Text>
+              )}
+              {!emailError && emailExists && (
+                <Text style={styles.fieldErrorText}>
                   This email is already registered. Please use a different email.
                 </Text>
               )}
@@ -505,6 +592,14 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     marginTop: 4,
     marginBottom: 8,
+  },
+  fieldErrorText: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: '#EF4444',
+    marginTop: 4,
+    marginBottom: 8,
+    marginLeft: 4,
   },
 });
 
