@@ -54,8 +54,9 @@ const sha256 = async (message: string): Promise<string> => {
 };
 
 export default function FarmerProfileScreen() {
-  const params = useLocalSearchParams<{ email?: string }>();
+  const params = useLocalSearchParams<{ email?: string; section?: string }>();
   const email = typeof params.email === 'string' ? params.email : '';
+  const initialSection = typeof params.section === 'string' ? params.section : undefined;
   const router = useRouter();
 
   const [profile, setProfile] = useState<UserProfile>({
@@ -100,6 +101,33 @@ export default function FarmerProfileScreen() {
   useEffect(() => {
     fetchProfile();
   }, [email]);
+
+  // Open specific section when navigated from dashboard sidebar
+  useEffect(() => {
+    if (!initialSection) return;
+
+    if (initialSection === 'basic') {
+      setShowBasicInfoSection(true);
+      setShowFarmSection(false);
+      setShowPasswordSection(false);
+      setShowSettingsSection(false);
+    } else if (initialSection === 'farm') {
+      setShowFarmSection(true);
+      setShowBasicInfoSection(false);
+      setShowPasswordSection(false);
+      setShowSettingsSection(false);
+    } else if (initialSection === 'password') {
+      setShowPasswordSection(true);
+      setShowBasicInfoSection(false);
+      setShowFarmSection(false);
+      setShowSettingsSection(false);
+    } else if (initialSection === 'settings') {
+      setShowSettingsSection(true);
+      setShowBasicInfoSection(false);
+      setShowFarmSection(false);
+      setShowPasswordSection(false);
+    }
+  }, [initialSection]);
 
   const fetchProfile = async () => {
     if (!email) {

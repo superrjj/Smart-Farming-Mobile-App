@@ -7,21 +7,28 @@ export default function UserManagementLayout() {
         name="splashScreen"
         options={{
           headerShown: false,
-          animation: 'fade',
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="welcomeScreen"
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
         }}
       />
       <Stack.Screen
         name="login"
         options={{
           headerShown: false,
-          animation: 'fade',
+          animation: 'slide_from_right',
         }}
       />
       <Stack.Screen
         name="signup"
         options={{
           headerShown: false,
-          animation: 'fade',
+          animation: 'slide_from_right',
         }}
       />
       <Stack.Screen name="dashboard" options={{ headerShown: false }} />

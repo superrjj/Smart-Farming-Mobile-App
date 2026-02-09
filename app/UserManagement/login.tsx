@@ -241,6 +241,7 @@ export default function LoginScreen() {
                     resizeMode="contain"
                   />
                 </View>
+                <Text style={styles.cardTitle}>Login Account</Text>
               </View>
 
               <View style={styles.form}>
@@ -525,6 +526,7 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     marginBottom: 24,
+    alignItems: 'center',
   },
   cardTitleRow: {
     flexDirection: 'row',
@@ -532,9 +534,10 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   cardTitle: {
-    fontFamily: fonts.bold,
-    fontSize: 28,
-    color: '#000',
+    fontFamily: fonts.semibold,
+    fontSize: 22,
+    color: '#111827',
+    marginTop: 12,
   },
   form: {
     gap: 16,
@@ -577,7 +580,7 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     backgroundColor: colors.brandGreen,
-    borderRadius: 12,
+    borderRadius: 999,
     paddingVertical: 16,
     marginTop: 8,
     justifyContent: 'center',

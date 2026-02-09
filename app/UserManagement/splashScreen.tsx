@@ -19,9 +19,9 @@ export default function SplashScreen() {
       useNativeDriver: true,
     }).start();
 
-    // Navigate to login after 3 seconds
+    // Navigate to welcome screen after a short delay
     const timer = setTimeout(() => {
-      router.replace('/UserManagement/login');
+      router.replace('/UserManagement/welcomeScreen');
     }, 4000);
 
     return () => clearTimeout(timer);
