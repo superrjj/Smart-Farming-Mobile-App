@@ -1,7 +1,12 @@
+import { sendPasswordResetCode } from '@/lib/sendgrid';
+import { supabase } from '@/lib/supabase';
 import { FontAwesome } from '@expo/vector-icons';
+import * as Crypto from 'expo-crypto';
+import * as Device from 'expo-device';
 import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   ScrollView,
@@ -10,13 +15,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Device from 'expo-device';
-import * as Crypto from 'expo-crypto';
-import { supabase } from '@/lib/supabase';
-import { sendPasswordResetCode } from '@/lib/sendgrid';
 
 const colors = {
   brandGreen: '#3E9B4F',
@@ -34,11 +34,11 @@ const fonts = {
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [emailOrPhone, setEmailOrPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  
+
   // Forgot password states
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotStep, setForgotStep] = useState(1);
@@ -51,7 +51,7 @@ export default function LoginScreen() {
   const [forgotEmailMessageType, setForgotEmailMessageType] = useState<'success' | 'error' | null>(null);
 
   const handleLogin = async () => {
-    if (!email || !password) {
+    if (!emailOrPhone || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
@@ -66,10 +66,13 @@ export default function LoginScreen() {
         password
       );
 
+      const trimmedInput = emailOrPhone.trim();
+
+      // Check if input is email or phone number
       const { data: userProfile, error } = await supabase
         .from('user_profiles')
         .select('*')
-        .eq('email', email.trim())
+        .or(`email.eq.${trimmedInput},phone_number.eq.${trimmedInput}`)
         .eq('password', hashedPassword)
         .maybeSingle();
 
@@ -91,7 +94,7 @@ export default function LoginScreen() {
           device_id: deviceId,
           device_model: deviceModel,
         })
-        .eq('email', email.trim());
+        .eq('email', userProfile.email);
 
       if (updateError) {
         console.warn('Failed to update device info:', updateError.message);
@@ -99,7 +102,7 @@ export default function LoginScreen() {
 
       router.replace({
         pathname: '/UserManagement/dashboard',
-        params: { email: email.trim() },
+        params: { email: userProfile.email },
       });
     } catch (error: any) {
       Alert.alert('Error', error.message || 'An unexpected error occurred');
@@ -134,9 +137,9 @@ export default function LoginScreen() {
       }
 
       const code = Math.floor(100000 + Math.random() * 900000).toString();
-      
+
       await sendPasswordResetCode(forgotEmail, code);
-      
+
       setForgotStep(2);
       startCountdown();
       setForgotEmailMessage('Verification code sent to your email');
@@ -183,10 +186,12 @@ export default function LoginScreen() {
       if (updateError) throw updateError;
 
       Alert.alert('Success', 'Password has been reset. You can now log in with your new password.', [
-        { text: 'OK', onPress: () => {
-          setShowForgotPassword(false);
-          resetForgotPasswordForm();
-        }}
+        {
+          text: 'OK', onPress: () => {
+            setShowForgotPassword(false);
+            resetForgotPasswordForm();
+          }
+        }
       ]);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to reset password');
@@ -236,7 +241,7 @@ export default function LoginScreen() {
               <View style={styles.cardHeader}>
                 <View style={styles.logoContainer}>
                   <Image
-                    source={require('@/assets/images/logo_string_beans.png')}
+                    source={require('@/assets/images/agri_hydra_logo.png')}
                     style={styles.logo}
                     resizeMode="contain"
                   />
@@ -245,67 +250,66 @@ export default function LoginScreen() {
               </View>
 
               <View style={styles.form}>
-              <View style={styles.inputWrapper}>
-                <FontAwesome name="envelope" size={16} color={colors.brandGrayText} style={styles.inputIcon} />
-                <TextInput
-                  placeholder="Email"
-                  placeholderTextColor={colors.brandGrayText}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  value={email}
-                  onChangeText={setEmail}
-                  editable={!loading}
-                  style={styles.input}
-                />
-              </View>
-
-              <View style={styles.inputWrapper}>
-                <FontAwesome name="lock" size={18} color={colors.brandGrayText} style={styles.inputIcon} />
-                <TextInput
-                  placeholder="Password"
-                  placeholderTextColor={colors.brandGrayText}
-                  secureTextEntry={!showPassword}
-                  value={password}
-                  onChangeText={setPassword}
-                  editable={!loading}
-                  style={styles.input}
-                />
-                <TouchableOpacity
-                  style={styles.togglePasswordButton}
-                  activeOpacity={0.7}
-                  onPress={() => setShowPassword((prev) => !prev)}>
-                  <FontAwesome
-                    name={showPassword ? 'eye-slash' : 'eye'}
-                    size={18}
-                    color={colors.brandGrayText}
+                <View style={styles.inputWrapper}>
+                  <FontAwesome name="user" size={16} color={colors.brandGrayText} style={styles.inputIcon} />
+                  <TextInput
+                    placeholder="Email or Phone number"
+                    placeholderTextColor={colors.brandGrayText}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={emailOrPhone}
+                    onChangeText={setEmailOrPhone}
+                    editable={!loading}
+                    style={styles.input}
                   />
-                </TouchableOpacity>
-              </View>
+                </View>
 
-              <TouchableOpacity 
-                style={styles.forgotWrapper} 
-                activeOpacity={0.7}
-                onPress={() => setShowForgotPassword(true)}>
-                <Text style={styles.forgotText}>Forgot Password?</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.loginButton, loading && styles.loginButtonDisabled]}
-                activeOpacity={0.9}
-                onPress={handleLogin}
-                disabled={loading}>
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.loginButtonText}>Login</Text>}
-              </TouchableOpacity>
-
-              <View style={styles.inlineFooter}>
-                <Text style={styles.inlineFooterText}>Don&apos;t have an account?</Text>
-                <Link href="/UserManagement/signup" asChild>
-                  <TouchableOpacity activeOpacity={0.7}>
-                    <Text style={styles.inlineFooterLink}>Create Account</Text>
+                <View style={styles.inputWrapper}>
+                  <FontAwesome name="lock" size={18} color={colors.brandGrayText} style={styles.inputIcon} />
+                  <TextInput
+                    placeholder="Password"
+                    placeholderTextColor={colors.brandGrayText}
+                    secureTextEntry={!showPassword}
+                    value={password}
+                    onChangeText={setPassword}
+                    editable={!loading}
+                    style={styles.input}
+                  />
+                  <TouchableOpacity
+                    style={styles.togglePasswordButton}
+                    activeOpacity={0.7}
+                    onPress={() => setShowPassword((prev) => !prev)}>
+                    <FontAwesome
+                      name={showPassword ? 'eye-slash' : 'eye'}
+                      size={18}
+                      color={colors.brandGrayText}
+                    />
                   </TouchableOpacity>
-                </Link>
-              </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.forgotWrapper}
+                  activeOpacity={0.7}
+                  onPress={() => setShowForgotPassword(true)}>
+                  <Text style={styles.forgotText}>Forgot Password?</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+                  activeOpacity={0.9}
+                  onPress={handleLogin}
+                  disabled={loading}>
+                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.loginButtonText}>Login</Text>}
+                </TouchableOpacity>
+
+                <View style={styles.inlineFooter}>
+                  <Text style={styles.inlineFooterText}>Don&apos;t have an account?</Text>
+                  <Link href="/UserManagement/signup" asChild>
+                    <TouchableOpacity activeOpacity={0.7}>
+                      <Text style={styles.inlineFooterLink}>Create Account</Text>
+                    </TouchableOpacity>
+                  </Link>
+                </View>
               </View>
             </View>
           </View>
@@ -323,7 +327,7 @@ export default function LoginScreen() {
       {showForgotPassword && (
         <View style={styles.modalOverlay}>
           <View style={styles.modal}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.modalCloseButton}
               onPress={() => {
                 setShowForgotPassword(false);

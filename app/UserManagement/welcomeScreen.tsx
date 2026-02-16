@@ -31,7 +31,7 @@ export default function WelcomeScreen() {
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.title}>Welcome to Beanly</Text>
+          <Text style={styles.title}>Welcome to AgriHydra</Text>
           <Text style={styles.subtitle}>
             Smart irrigation and monitoring tailored for string beans farmers. Track schedules,
             water usage, and farm conditions with ease.

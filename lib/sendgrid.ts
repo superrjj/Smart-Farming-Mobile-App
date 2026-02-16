@@ -262,7 +262,7 @@ export async function sendPasswordResetCode(email: string, verificationCode: str
         <div class="container">
           <div class="header">
             <div class="logo">
-              <div class="logo-text">Beanly</div>
+              <div class="logo-text">AgriHydra</div>
               <div class="header-subtitle">Smart Farming for String Beans</div>
             </div>
           </div>
@@ -271,7 +271,7 @@ export async function sendPasswordResetCode(email: string, verificationCode: str
             <div class="greeting">Hello! 👋</div>
             
             <p class="message">
-              We received a request to reset the password for your Beanly account. 
+              We received a request to reset the password for your AgriHydra account. 
               Use the verification code below to proceed with resetting your password.
             </p>
             
@@ -331,11 +331,11 @@ export async function sendPasswordResetCode(email: string, verificationCode: str
     body: JSON.stringify({
       personalizations: [{
         to: [{ email }],
-        subject: 'Password Reset Verification Code - Beanly',
+        subject: 'Password Reset Verification Code - AgriHydra',
       }],
       from: { 
         email: SENDGRID_CONFIG.fromEmail,
-        name: 'Beanly'
+        name: 'AgriHydra'
       },
       content: [
         {

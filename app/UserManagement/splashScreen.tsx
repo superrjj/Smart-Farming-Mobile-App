@@ -31,7 +31,7 @@ export default function SplashScreen() {
     <SafeAreaView style={styles.container}>
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
         <Image
-          source={require('@/assets/images/logo_string_beans.png')}
+          source={require('@/assets/images/agri_hydra_logo.png')}
           style={styles.logo}
           resizeMode="contain"
         />
