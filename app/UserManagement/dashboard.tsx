@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
 import { supabase } from '@/lib/supabase';
+import { clearAllStorage } from '@/lib/storage';
 
 const colors = {
   brandGreen: '#3E9B4F',
@@ -247,8 +248,17 @@ export default function DashboardScreen() {
           setMenuOpen(false);
           setLoggingOut(true);
           try {
+            // Clear logged in email but keep remember me credentials if user wants to use them again
+            // Note: We're not clearing remember me credentials here, so if user has it checked,
+            // they can still auto-login next time. If you want to clear everything on logout,
+            // use clearAllStorage() instead.
+            await clearAllStorage();
             // Small delay to show loader; navigation time still depends on device/network
             await new Promise(resolve => setTimeout(resolve, 600));
+            router.replace('/UserManagement/login');
+          } catch (error) {
+            console.error('Error during logout:', error);
+            // Still navigate to login even if storage clear fails
             router.replace('/UserManagement/login');
           } finally {
             setLoggingOut(false);
@@ -328,7 +338,13 @@ export default function DashboardScreen() {
             <View style={styles.systemHeaderRow}>
               <View style={styles.systemHeaderText}>
                 <Text style={styles.greetingText}>
-                  Hi, {fullName.split(' ')[0] || 'Farmer'}
+                  Hi, {(() => {
+                    const nameParts = fullName.trim().split(/\s+/).filter(part => part.length > 0);
+                    if (nameParts.length === 0) return 'Farmer';
+                    if (nameParts.length === 1) return nameParts[0];
+                    // If 2 or more names, show first two names
+                    return `${nameParts[0]} ${nameParts[1]}`;
+                  })()}
                 </Text>
                 <Text style={styles.systemSubtitle}>
                   Your string beans irrigation is{' '}

@@ -1,5 +1,7 @@
 import { Image, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { setFirstLaunchComplete } from '@/lib/storage';
+import { useEffect } from 'react';
 
 const colors = {
   brandGreen: '#3E9B4F',
@@ -18,6 +20,18 @@ const fonts = {
 
 export default function WelcomeScreen() {
   const router = useRouter();
+
+  // Mark first launch as complete when component mounts
+  useEffect(() => {
+    const markFirstLaunchComplete = async () => {
+      try {
+        await setFirstLaunchComplete();
+      } catch (error) {
+        console.error('Error marking first launch complete:', error);
+      }
+    };
+    markFirstLaunchComplete();
+  }, []);
 
   return (
     <SafeAreaView style={styles.safeArea}>

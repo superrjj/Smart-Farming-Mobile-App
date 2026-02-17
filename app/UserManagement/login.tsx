@@ -1,14 +1,17 @@
 import { sendPasswordResetCode } from '@/lib/sendgrid';
 import { supabase } from '@/lib/supabase';
+import { saveCredentials, clearSavedCredentials, getSavedCredentials, saveLoggedInEmail } from '@/lib/storage';
 import { FontAwesome } from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
 import * as Device from 'expo-device';
 import { Link, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -49,6 +52,24 @@ export default function LoginScreen() {
   const [countdown, setCountdown] = useState(0);
   const [forgotEmailMessage, setForgotEmailMessage] = useState<string | null>(null);
   const [forgotEmailMessageType, setForgotEmailMessageType] = useState<'success' | 'error' | null>(null);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  // Load saved credentials on mount
+  useEffect(() => {
+    const loadSavedCredentials = async () => {
+      try {
+        const saved = await getSavedCredentials();
+        if (saved) {
+          setEmailOrPhone(saved.email);
+          setPassword(saved.password);
+          setRememberMe(true);
+        }
+      } catch (error) {
+        console.error('Error loading saved credentials:', error);
+      }
+    };
+    loadSavedCredentials();
+  }, []);
 
   const handleLogin = async () => {
     if (!emailOrPhone || !password) {
@@ -77,13 +98,13 @@ export default function LoginScreen() {
         .maybeSingle();
 
       if (error) {
-        Alert.alert('Login Failed', error.message);
+        Alert.alert('Login Failed', error.message || 'An error occurred during login. Please try again.');
         setLoading(false);
         return;
       }
 
       if (!userProfile) {
-        Alert.alert('Login Failed', 'Invalid credentials');
+        Alert.alert('Login Failed', 'Invalid email/phone number or password. Please check your credentials and try again.');
         setLoading(false);
         return;
       }
@@ -100,12 +121,35 @@ export default function LoginScreen() {
         console.warn('Failed to update device info:', updateError.message);
       }
 
+      // Handle Remember Me
+      try {
+        if (rememberMe) {
+          await saveCredentials(trimmedInput, password);
+        } else {
+          await clearSavedCredentials();
+        }
+        // Save logged in email for future reference
+        await saveLoggedInEmail(userProfile.email);
+      } catch (storageError: any) {
+        console.warn('Error saving credentials:', storageError);
+        // Don't block login if storage fails, but show warning
+        Alert.alert(
+          'Warning',
+          'Login successful, but failed to save login preferences. You may need to log in again next time.',
+          [{ text: 'OK' }]
+        );
+      }
+
       router.replace({
         pathname: '/UserManagement/dashboard',
         params: { email: userProfile.email },
       });
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'An unexpected error occurred');
+      console.error('Login error:', error);
+      Alert.alert(
+        'Login Error',
+        error.message || 'An unexpected error occurred. Please check your internet connection and try again.'
+      );
       setLoading(false);
     }
   };
@@ -226,8 +270,16 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView bounces={false} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.phoneFrame}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoidingView}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
+        <ScrollView
+          bounces={false}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          <View style={styles.phoneFrame}>
           {/* Green Background Section */}
           <View style={styles.greenBackground}>
             <View style={styles.header}>
@@ -287,19 +339,33 @@ export default function LoginScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.forgotWrapper}
-                  activeOpacity={0.7}
-                  onPress={() => setShowForgotPassword(true)}>
-                  <Text style={styles.forgotText}>Forgot Password?</Text>
-                </TouchableOpacity>
+                <View style={styles.rememberMeContainer}>
+                  <TouchableOpacity
+                    style={styles.checkboxContainer}
+                    activeOpacity={0.7}
+                    onPress={() => setRememberMe(!rememberMe)}
+                    disabled={loading}>
+                    <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
+                      {rememberMe && (
+                        <FontAwesome name="check" size={12} color="#fff" />
+                      )}
+                    </View>
+                    <Text style={styles.rememberMeText}>Remember Me</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.forgotWrapper}
+                    activeOpacity={0.7}
+                    onPress={() => setShowForgotPassword(true)}>
+                    <Text style={styles.forgotText}>Forgot Password?</Text>
+                  </TouchableOpacity>
+                </View>
 
                 <TouchableOpacity
                   style={[styles.loginButton, loading && styles.loginButtonDisabled]}
                   activeOpacity={0.9}
                   onPress={handleLogin}
                   disabled={loading}>
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.loginButtonText}>Login</Text>}
+                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.loginButtonText}>LOGIN</Text>}
                 </TouchableOpacity>
 
                 <View style={styles.inlineFooter}>
@@ -314,7 +380,8 @@ export default function LoginScreen() {
             </View>
           </View>
         </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {loading && (
         <View style={styles.loadingOverlay}>
@@ -326,18 +393,25 @@ export default function LoginScreen() {
       {/* Forgot Password Modal */}
       {showForgotPassword && (
         <View style={styles.modalOverlay}>
-          <View style={styles.modal}>
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => {
-                setShowForgotPassword(false);
-                resetForgotPasswordForm();
-              }}>
-              <FontAwesome name="times" size={20} color={colors.brandGrayText} />
-            </TouchableOpacity>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalKeyboardAvoidingView}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
+            <View style={styles.modal}>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => {
+                  setShowForgotPassword(false);
+                  resetForgotPasswordForm();
+                }}>
+                <FontAwesome name="times" size={20} color={colors.brandGrayText} />
+              </TouchableOpacity>
 
-            {forgotStep === 1 && (
-              <View style={styles.modalContent}>
+              {forgotStep === 1 && (
+              <ScrollView
+                contentContainerStyle={styles.modalContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}>
                 <Image
                   source={require('@/assets/email-address.png')}
                   style={styles.modalIconImage}
@@ -382,11 +456,14 @@ export default function LoginScreen() {
                     {loading ? 'Sending...' : 'Send Code'}
                   </Text>
                 </TouchableOpacity>
-              </View>
-            )}
+              </ScrollView>
+              )}
 
-            {forgotStep === 2 && (
-              <View style={styles.modalContent}>
+              {forgotStep === 2 && (
+              <ScrollView
+                contentContainerStyle={styles.modalContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}>
                 <Image
                   source={require('@/assets/two-factor-auth.png')}
                   style={styles.modalIconImage}
@@ -394,7 +471,7 @@ export default function LoginScreen() {
                 />
                 <Text style={styles.modalTitle}>Enter Verification Code</Text>
                 <Text style={styles.modalDescription}>
-                  We've sent a 6-digit code to {forgotEmail}
+                  We&apos;ve sent a 6-digit code to {forgotEmail}
                 </Text>
                 <View style={styles.codeInputContainer}>
                   <TextInput
@@ -421,11 +498,14 @@ export default function LoginScreen() {
                     {countdown > 0 ? `Resend code in ${countdown}s` : 'Resend code'}
                   </Text>
                 </TouchableOpacity>
-              </View>
-            )}
+              </ScrollView>
+              )}
 
-            {forgotStep === 3 && (
-              <View style={styles.modalContent}>
+              {forgotStep === 3 && (
+              <ScrollView
+                contentContainerStyle={styles.modalContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}>
                 <Image
                   source={require('@/assets/change-pass.png')}
                   style={styles.modalIconImage}
@@ -465,9 +545,10 @@ export default function LoginScreen() {
                     {loading ? 'Resetting...' : 'Reset Password'}
                   </Text>
                 </TouchableOpacity>
-              </View>
-            )}
-          </View>
+              </ScrollView>
+              )}
+            </View>
+          </KeyboardAvoidingView>
         </View>
       )}
     </SafeAreaView>
@@ -478,6 +559,9 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
@@ -572,10 +656,39 @@ const styles = StyleSheet.create({
     color: '#000',
     backgroundColor: '#F8F8F8',
   },
-  forgotWrapper: {
-    alignSelf: 'flex-end',
+  rememberMeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginTop: 4,
     marginBottom: 4,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.brandGrayBorder,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: colors.brandGreen,
+    borderColor: colors.brandGreen,
+  },
+  rememberMeText: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    color: '#000',
+  },
+  forgotWrapper: {
+    alignSelf: 'flex-end',
   },
   forgotText: {
     fontFamily: fonts.medium,
@@ -584,7 +697,7 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     backgroundColor: colors.brandGreen,
-    borderRadius: 999,
+    borderRadius: 12,
     paddingVertical: 16,
     marginTop: 8,
     justifyContent: 'center',
@@ -650,12 +763,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
+  modalKeyboardAvoidingView: {
+    width: '100%',
+    maxWidth: 340,
+  },
   modal: {
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 20,
     width: '100%',
-    maxWidth: 340,
     position: 'relative',
   },
   modalCloseButton: {
@@ -668,6 +784,7 @@ const styles = StyleSheet.create({
   modalContent: {
     alignItems: 'center',
     paddingTop: 8,
+    paddingBottom: 8,
   },
   modalIconContainer: {
     width: 70,

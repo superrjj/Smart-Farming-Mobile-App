@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -262,11 +264,16 @@ export default function SignupScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        bounces={false}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}>
-        <View style={styles.phoneFrame}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoidingView}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
+        <ScrollView
+          bounces={false}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          <View style={styles.phoneFrame}>
           {/* Green Background Section */}
           <View style={styles.greenBackground}>
             <View style={styles.header}>
@@ -424,14 +431,14 @@ export default function SignupScreen() {
                 activeOpacity={0.9}
                 onPress={handleSignup}
                 disabled={loading}>
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.signupButtonText}>Sign Up</Text>}
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.signupButtonText}>SIGN UP</Text>}
               </TouchableOpacity>
 
               <View style={styles.inlineFooter}>
                 <Text style={styles.inlineFooterText}>Already have an account?</Text>
                 <Link href="/UserManagement/login" asChild>
                   <TouchableOpacity activeOpacity={0.7}>
-                    <Text style={styles.inlineFooterLink}>Login</Text>
+                    <Text style={styles.inlineFooterLink}>LOGIN</Text>
                   </TouchableOpacity>
                 </Link>
               </View>
@@ -439,7 +446,8 @@ export default function SignupScreen() {
             </View>
           </View>
         </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -448,6 +456,9 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
