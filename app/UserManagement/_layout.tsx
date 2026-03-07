@@ -35,6 +35,12 @@ export default function UserManagementLayout() {
       <Stack.Screen name="weatherUpdate" options={{ headerShown: false }} />
       <Stack.Screen name="waterDistribution" options={{ headerShown: false }} />
       <Stack.Screen name="irrigationSchedule" options={{ headerShown: false }} />
+      <Stack.Screen name="waterRequirement" options={{ headerShown: false }} />
+      <Stack.Screen name="irrigationHistory" options={{ headerShown: false }} />
+      <Stack.Screen name="monitoringAdjustments" options={{ headerShown: false }} />
+      <Stack.Screen name="patternAnalyzer" options={{ headerShown: false }} />
+      <Stack.Screen name="seasonalSummary" options={{ headerShown: false }} />
+      <Stack.Screen name="settings" options={{ headerShown: false }} />
     </Stack>
   );
 }

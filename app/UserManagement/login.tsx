@@ -279,7 +279,7 @@ export default function LoginScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
-          <View style={styles.phoneFrame}>
+        <View style={styles.phoneFrame}>
           {/* Green Background Section */}
           <View style={styles.greenBackground}>
             <View style={styles.header}>
@@ -352,12 +352,12 @@ export default function LoginScreen() {
                     </View>
                     <Text style={styles.rememberMeText}>Remember Me</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.forgotWrapper}
-                    activeOpacity={0.7}
-                    onPress={() => setShowForgotPassword(true)}>
-                    <Text style={styles.forgotText}>Forgot Password?</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.forgotWrapper}
+                  activeOpacity={0.7}
+                  onPress={() => setShowForgotPassword(true)}>
+                  <Text style={styles.forgotText}>Forgot Password?</Text>
+                </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity
@@ -380,7 +380,7 @@ export default function LoginScreen() {
             </View>
           </View>
         </View>
-        </ScrollView>
+      </ScrollView>
       </KeyboardAvoidingView>
 
       {loading && (
@@ -397,17 +397,17 @@ export default function LoginScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.modalKeyboardAvoidingView}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
-            <View style={styles.modal}>
-              <TouchableOpacity
-                style={styles.modalCloseButton}
-                onPress={() => {
-                  setShowForgotPassword(false);
-                  resetForgotPasswordForm();
-                }}>
-                <FontAwesome name="times" size={20} color={colors.brandGrayText} />
-              </TouchableOpacity>
+          <View style={styles.modal}>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => {
+                setShowForgotPassword(false);
+                resetForgotPasswordForm();
+              }}>
+              <FontAwesome name="times" size={20} color={colors.brandGrayText} />
+            </TouchableOpacity>
 
-              {forgotStep === 1 && (
+            {forgotStep === 1 && (
               <ScrollView
                 contentContainerStyle={styles.modalContent}
                 keyboardShouldPersistTaps="handled"
@@ -457,9 +457,9 @@ export default function LoginScreen() {
                   </Text>
                 </TouchableOpacity>
               </ScrollView>
-              )}
+            )}
 
-              {forgotStep === 2 && (
+            {forgotStep === 2 && (
               <ScrollView
                 contentContainerStyle={styles.modalContent}
                 keyboardShouldPersistTaps="handled"
@@ -499,9 +499,9 @@ export default function LoginScreen() {
                   </Text>
                 </TouchableOpacity>
               </ScrollView>
-              )}
+            )}
 
-              {forgotStep === 3 && (
+            {forgotStep === 3 && (
               <ScrollView
                 contentContainerStyle={styles.modalContent}
                 keyboardShouldPersistTaps="handled"
@@ -546,8 +546,8 @@ export default function LoginScreen() {
                   </Text>
                 </TouchableOpacity>
               </ScrollView>
-              )}
-            </View>
+            )}
+          </View>
           </KeyboardAvoidingView>
         </View>
       )}

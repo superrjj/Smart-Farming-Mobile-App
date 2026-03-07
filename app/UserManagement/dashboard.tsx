@@ -38,19 +38,21 @@ const fonts = {
   bold: 'Poppins_700Bold',
 };
 
+// Menu items matching wireframe
 const MENU_ITEMS = [
   { key: 'soil', icon: 'leaf', label: 'Soil Moisture' },
   { key: 'temp', icon: 'thermometer', label: 'Temperature' },
   { key: 'humidity', icon: 'tint', label: 'Humidity' },
   { key: 'weather', icon: 'cloud', label: 'Weather Update' },
-  { key: 'water', icon: 'tint', label: 'Water Distribution' },
-  { key: 'schedule', icon: 'calendar', label: 'Irrigation Schedule' },
-  { key: 'sensor-device', icon: 'microchip', label: 'Sensor Device' },
+  { key: 'water-requirement', icon: 'percent', label: 'Water Requirement' },
+  { key: 'irrigation-history', icon: 'folder', label: 'Historical Irrigation & Water Logging' },
+  { key: 'automated-irrigation', icon: 'refresh', label: 'Automated Irrigation' },
+  { key: 'monitoring', icon: 'line-chart', label: 'Monitoring & Adjustments' },
 ];
 
 const ANALYTICS_SUB_ITEMS = [
-  { key: 'env', label: 'Pattern Analyzer' },
-  { key: 'seasonal', label: 'Seasonal Summary' },
+  { key: 'env', label: 'Environmental Condition Pattern Analyzer' },
+  { key: 'seasonal', label: 'Seasonal Irrigation Behavior Summary' },
 ];
 
 const DRAWER_WIDTH = Math.min(320, Dimensions.get('window').width * 0.8);
@@ -301,9 +303,29 @@ export default function DashboardScreen() {
         pathname: '/UserManagement/irrigationSchedule',
         params: { email },
       });
-    } else if (itemKey === 'sensor-device') {
+    } else if (itemKey === 'water-requirement') {
       router.push({
-        pathname: '/UserManagement/sensorDevice',
+        pathname: '/UserManagement/waterRequirement',
+        params: { email },
+      });
+    } else if (itemKey === 'irrigation-history') {
+      router.push({
+        pathname: '/UserManagement/irrigationHistory',
+        params: { email },
+      });
+    } else if (itemKey === 'automated-irrigation') {
+      router.push({
+        pathname: '/UserManagement/waterDistribution',
+        params: { email },
+      });
+    } else if (itemKey === 'monitoring') {
+      router.push({
+        pathname: '/UserManagement/monitoringAdjustments',
+        params: { email },
+      });
+    } else if (itemKey === 'settings') {
+      router.push({
+        pathname: '/UserManagement/settings',
         params: { email },
       });
     }
@@ -473,19 +495,6 @@ export default function DashboardScreen() {
                   <Text style={styles.userName}>{fullName}</Text>
                 )}
               </View>
-              <TouchableOpacity
-                style={styles.editProfileButton}
-                activeOpacity={0.8}
-                onPress={() => {
-                  setMenuOpen(false);
-                  router.push({
-                    pathname: '/UserManagement/farmerProfile',
-                    params: { email },
-                  });
-                }}
-              >
-                <Text style={styles.editProfileText}>Edit Profile</Text>
-              </TouchableOpacity>
             </View>
 
             {/* Main menu + logout */}
@@ -524,10 +533,33 @@ export default function DashboardScreen() {
 
               {analyticsOpen &&
                 ANALYTICS_SUB_ITEMS.map(sub => (
-                  <TouchableOpacity key={sub.key} style={styles.subMenuItem} activeOpacity={0.8}>
+                  <TouchableOpacity
+                    key={sub.key}
+                    style={styles.subMenuItem}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      setMenuOpen(false);
+                      if (sub.key === 'env') {
+                        router.push({ pathname: '/UserManagement/patternAnalyzer', params: { email } });
+                      } else if (sub.key === 'seasonal') {
+                        router.push({ pathname: '/UserManagement/seasonalSummary', params: { email } });
+                      }
+                    }}>
                     <Text style={styles.subMenuItemLabel}>{sub.label}</Text>
                   </TouchableOpacity>
                 ))}
+
+              {/* Settings */}
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.8}
+                onPress={() => handleMenuNavigate('settings')}>
+                <View style={styles.menuItemLeft}>
+                  <FontAwesome name="cog" size={18} color={colors.brandBlue} />
+                  <Text style={styles.menuItemLabel}>Settings</Text>
+                </View>
+                <FontAwesome name="chevron-right" size={14} color={colors.brandGrayText} />
+              </TouchableOpacity>
 
               {/* Logout */}
               <TouchableOpacity style={styles.logoutItem} activeOpacity={0.8} onPress={handleLogout}>
@@ -807,19 +839,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semibold,
     fontSize: 18,
     color: '#111827',
-  },
-  editProfileButton: {
-    marginTop: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.brandBlue,
-  },
-  editProfileText: {
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    color: colors.brandBlue,
   },
   menuSection: {
     borderRadius: 12,

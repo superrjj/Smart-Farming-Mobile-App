@@ -268,12 +268,12 @@ export default function SignupScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingView}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
-        <ScrollView
-          bounces={false}
-          contentContainerStyle={styles.scrollContent}
+      <ScrollView
+        bounces={false}
+        contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
-          <View style={styles.phoneFrame}>
+        <View style={styles.phoneFrame}>
           {/* Green Background Section */}
           <View style={styles.greenBackground}>
             <View style={styles.header}>
@@ -446,7 +446,7 @@ export default function SignupScreen() {
             </View>
           </View>
         </View>
-        </ScrollView>
+      </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
