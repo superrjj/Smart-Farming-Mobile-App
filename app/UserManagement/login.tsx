@@ -298,7 +298,7 @@ export default function LoginScreen() {
                     resizeMode="contain"
                   />
                 </View>
-                <Text style={styles.cardTitle}>Login Account</Text>
+                <Text style={styles.cardTitle}>Login</Text>
               </View>
 
               <View style={styles.form}>
@@ -624,7 +624,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontFamily: fonts.semibold,
     fontSize: 22,
-    color: '#111827',
+    color: '#3E9B4F',
     marginTop: 12,
   },
   form: {
