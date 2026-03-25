@@ -8,18 +8,18 @@ import {
   BackHandler,
   Dimensions,
   Image,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
 
-import { supabase } from '@/lib/supabase';
 import { clearAllStorage } from '@/lib/storage';
+import { supabase } from '@/lib/supabase';
 
 const colors = {
   brandGreen: '#3E9B4F',
@@ -44,10 +44,10 @@ const MENU_ITEMS = [
   { key: 'temp', icon: 'thermometer', label: 'Temperature' },
   { key: 'humidity', icon: 'tint', label: 'Humidity' },
   { key: 'weather', icon: 'cloud', label: 'Weather Update' },
-  { key: 'water-requirement', icon: 'percent', label: 'Water Requirement' },
-  { key: 'irrigation-history', icon: 'folder', label: 'Historical Irrigation & Water Logging' },
   { key: 'automated-irrigation', icon: 'refresh', label: 'Automated Irrigation' },
   { key: 'monitoring', icon: 'line-chart', label: 'Monitoring & Adjustments' },
+  { key: 'water-requirement', icon: 'percent', label: 'Water Requirement' },
+  { key: 'irrigation-history', icon: 'folder', label: 'Irrigation & Water Logging' },
 ];
 
 const ANALYTICS_SUB_ITEMS = [
@@ -315,7 +315,7 @@ export default function DashboardScreen() {
       });
     } else if (itemKey === 'automated-irrigation') {
       router.push({
-        pathname: '/UserManagement/waterDistribution',
+        pathname: '/UserManagement/irrigationSchedule',
         params: { email },
       });
     } else if (itemKey === 'monitoring') {
@@ -501,20 +501,6 @@ export default function DashboardScreen() {
             <View style={styles.menuSection}>
               <Text style={styles.menuTitle}>Menu</Text>
 
-              {MENU_ITEMS.map(item => (
-                <TouchableOpacity
-                  key={item.key}
-                  style={styles.menuItem}
-                  activeOpacity={0.8}
-                  onPress={() => handleMenuNavigate(item.key)}>
-                  <View style={styles.menuItemLeft}>
-                    <FontAwesome name={item.icon as any} size={18} color={colors.brandBlue} />
-                    <Text style={styles.menuItemLabel}>{item.label}</Text>
-                  </View>
-                  <FontAwesome name="chevron-right" size={14} color={colors.brandGrayText} />
-                </TouchableOpacity>
-              ))}
-
               {/* Analytics & Reporting */}
               <TouchableOpacity
                 style={styles.analyticsHeader}
@@ -548,6 +534,20 @@ export default function DashboardScreen() {
                     <Text style={styles.subMenuItemLabel}>{sub.label}</Text>
                   </TouchableOpacity>
                 ))}
+
+              {MENU_ITEMS.map(item => (
+                <TouchableOpacity
+                  key={item.key}
+                  style={styles.menuItem}
+                  activeOpacity={0.8}
+                  onPress={() => handleMenuNavigate(item.key)}>
+                  <View style={styles.menuItemLeft}>
+                    <FontAwesome name={item.icon as any} size={18} color={colors.brandBlue} />
+                    <Text style={styles.menuItemLabel}>{item.label}</Text>
+                  </View>
+                  <FontAwesome name="chevron-right" size={14} color={colors.brandGrayText} />
+                </TouchableOpacity>
+              ))}
 
               {/* Settings */}
               <TouchableOpacity
