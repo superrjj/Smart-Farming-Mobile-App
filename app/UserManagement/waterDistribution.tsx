@@ -1,39 +1,44 @@
-import { FontAwesome } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { FontAwesome } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useState } from "react";
 import {
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const colors = {
-  primary: '#0891B2',
-  primaryLight: '#22D3EE',
-  primaryDark: '#0E7490',
-  grayText: '#6B7280',
-  grayBorder: '#E5E7EB',
-  grayLight: '#F3F4F6',
-  dark: '#1F2937',
-  success: '#22C55E',
-  danger: '#EF4444',
+  primary: "#0891B2",
+  primaryLight: "#22D3EE",
+  primaryDark: "#0E7490",
+  grayText: "#6B7280",
+  grayBorder: "#E5E7EB",
+  grayLight: "#F3F4F6",
+  dark: "#1F2937",
+  success: "#22C55E",
+  danger: "#EF4444",
 };
 
 const fonts = {
-  regular: 'Poppins_400Regular',
-  medium: 'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold: 'Poppins_700Bold',
+  regular: "Poppins_400Regular",
+  medium: "Poppins_500Medium",
+  semibold: "Poppins_600SemiBold",
+  bold: "Poppins_700Bold",
 };
 
 // Mock data for irrigation areas
 const AREAS_DATA = [
-  { id: 1, name: 'Area 1', progress: 75, status: 'active', flowRate: '1.2 L/min', volume: '45 L' },
-  { id: 2, name: 'Area 2', progress: 60, status: 'active', flowRate: '1.0 L/min', volume: '38 L' },
-  { id: 3, name: 'Area 3', progress: 0, status: 'inactive', flowRate: '0 L/min', volume: '0 L' },
+  {
+    id: 1,
+    name: "Area 1",
+    progress: 75,
+    status: "active",
+    flowRate: "1.2 L/min",
+    volume: "45 L",
+  },
 ];
 
 export default function WaterDistributionScreen() {
@@ -51,7 +56,7 @@ export default function WaterDistributionScreen() {
 
   const handleAddArea = () => {
     // TODO: Implement add area functionality
-    console.log('Add new area');
+    console.log("Add new area");
   };
 
   return (
@@ -59,7 +64,10 @@ export default function WaterDistributionScreen() {
       <View style={styles.container}>
         {/* Top App Bar */}
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
             <FontAwesome name="chevron-left" size={18} color={colors.dark} />
           </TouchableOpacity>
 
@@ -76,17 +84,35 @@ export default function WaterDistributionScreen() {
         {/* Control Buttons */}
         <View style={styles.controlsContainer}>
           <TouchableOpacity
-            style={[styles.controlButton, styles.startButton, isRunning && styles.activeButton]}
+            style={[
+              styles.controlButton,
+              styles.startButton,
+              isRunning && styles.activeButton,
+            ]}
             onPress={handleStart}
-            activeOpacity={0.8}>
-            <Text style={[styles.controlButtonText, styles.startButtonText]}>START</Text>
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.controlButtonText, styles.startButtonText]}>
+              START
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.controlButton, styles.stopButton, !isRunning && styles.stopActiveButton]}
+            style={[
+              styles.controlButton,
+              styles.stopButton,
+              !isRunning && styles.stopActiveButton,
+            ]}
             onPress={handleStop}
-            activeOpacity={0.8}>
-            <Text style={[styles.controlButtonText, styles.stopButtonText, !isRunning && styles.stopActiveText]}>
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.controlButtonText,
+                styles.stopButtonText,
+                !isRunning && styles.stopActiveText,
+              ]}
+            >
               STOP
             </Text>
           </TouchableOpacity>
@@ -96,7 +122,8 @@ export default function WaterDistributionScreen() {
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}>
+          showsVerticalScrollIndicator={false}
+        >
           {areas.map((area, index) => (
             <View key={area.id} style={styles.areaCard}>
               <View style={styles.areaHeader}>
@@ -105,11 +132,13 @@ export default function WaterDistributionScreen() {
                   <View
                     style={[
                       styles.statusDot,
-                      area.status === 'active' ? styles.statusActive : styles.statusInactive,
+                      area.status === "active"
+                        ? styles.statusActive
+                        : styles.statusInactive,
                     ]}
                   />
                   <Text style={styles.statusText}>
-                    {area.status === 'active' ? 'Active' : 'Inactive'}
+                    {area.status === "active" ? "Active" : "Inactive"}
                   </Text>
                 </View>
               </View>
@@ -117,7 +146,11 @@ export default function WaterDistributionScreen() {
               {/* Area Stats */}
               <View style={styles.areaStats}>
                 <View style={styles.statItem}>
-                  <FontAwesome name="tachometer" size={14} color={colors.grayText} />
+                  <FontAwesome
+                    name="tachometer"
+                    size={14}
+                    color={colors.grayText}
+                  />
                   <Text style={styles.statLabel}>Flow Rate</Text>
                   <Text style={styles.statValue}>{area.flowRate}</Text>
                 </View>
@@ -136,12 +169,15 @@ export default function WaterDistributionScreen() {
                       styles.progressFill,
                       {
                         width: `${area.progress}%`,
-                        backgroundColor: area.status === 'active' ? colors.primary : colors.grayBorder,
+                        backgroundColor:
+                          area.status === "active"
+                            ? colors.primary
+                            : colors.grayBorder,
                       },
                     ]}
                   />
                   {/* Animated dots effect */}
-                  {area.status === 'active' && (
+                  {area.status === "active" && (
                     <View style={styles.dotsContainer}>
                       {[...Array(Math.floor(area.progress / 8))].map((_, i) => (
                         <View key={i} style={styles.dot} />
@@ -156,7 +192,7 @@ export default function WaterDistributionScreen() {
               <View style={styles.areaControls}>
                 <TouchableOpacity style={styles.areaControlButton}>
                   <FontAwesome
-                    name={area.status === 'active' ? 'pause' : 'play'}
+                    name={area.status === "active" ? "pause" : "play"}
                     size={14}
                     color={colors.primary}
                   />
@@ -165,14 +201,22 @@ export default function WaterDistributionScreen() {
                   <FontAwesome name="cog" size={14} color={colors.grayText} />
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.areaControlButton}>
-                  <FontAwesome name="info-circle" size={14} color={colors.grayText} />
+                  <FontAwesome
+                    name="info-circle"
+                    size={14}
+                    color={colors.grayText}
+                  />
                 </TouchableOpacity>
               </View>
             </View>
           ))}
 
           {/* Add New Area Card */}
-          <TouchableOpacity style={styles.addAreaCard} onPress={handleAddArea} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={styles.addAreaCard}
+            onPress={handleAddArea}
+            activeOpacity={0.7}
+          >
             <View style={styles.addAreaIcon}>
               <FontAwesome name="plus" size={24} color={colors.primary} />
             </View>
@@ -193,7 +237,7 @@ export default function WaterDistributionScreen() {
           </View>
           <View style={styles.footerDivider} />
           <View style={styles.footerStat}>
-            <Text style={styles.footerStatLabel}>Today's Usage</Text>
+            <Text style={styles.footerStatLabel}>Today Usage</Text>
             <Text style={styles.footerStatValue}>83 L</Text>
           </View>
         </View>
@@ -205,18 +249,18 @@ export default function WaterDistributionScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: "#F9FAFB",
   },
   container: {
     flex: 1,
   },
   topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.grayBorder,
   },
@@ -225,8 +269,8 @@ const styles = StyleSheet.create({
     width: 32,
   },
   titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   topBarTitle: {
@@ -240,26 +284,26 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     backgroundColor: colors.grayLight,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   placeholder: {
     width: 32,
   },
   controlsContainer: {
-    flexDirection: 'column',
-    alignItems: 'center',
+    flexDirection: "column",
+    alignItems: "center",
     paddingVertical: 20,
     paddingHorizontal: 40,
     gap: 12,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   controlButton: {
-    width: '100%',
+    width: "100%",
     paddingVertical: 14,
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   startButton: {
     backgroundColor: colors.primary,
@@ -273,13 +317,13 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   stopButton: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderWidth: 2,
     borderColor: colors.grayBorder,
   },
   stopActiveButton: {
     borderColor: colors.danger,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: "#FEF2F2",
   },
   controlButtonText: {
     fontFamily: fonts.bold,
@@ -287,7 +331,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   startButtonText: {
-    color: '#fff',
+    color: "#fff",
   },
   stopButtonText: {
     color: colors.grayText,
@@ -303,16 +347,16 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   areaCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.grayBorder,
     padding: 16,
   },
   areaHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
   },
   areaName: {
@@ -321,8 +365,8 @@ const styles = StyleSheet.create({
     color: colors.dark,
   },
   areaStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
   statusDot: {
@@ -342,13 +386,13 @@ const styles = StyleSheet.create({
     color: colors.grayText,
   },
   areaStats: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 24,
     marginBottom: 16,
   },
   statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
   statLabel: {
@@ -362,8 +406,8 @@ const styles = StyleSheet.create({
     color: colors.dark,
   },
   progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
     marginBottom: 12,
   },
@@ -372,21 +416,21 @@ const styles = StyleSheet.create({
     height: 12,
     backgroundColor: colors.grayLight,
     borderRadius: 6,
-    overflow: 'hidden',
-    position: 'relative',
+    overflow: "hidden",
+    position: "relative",
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     borderRadius: 6,
   },
   dotsContainer: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 4,
     gap: 4,
   },
@@ -394,18 +438,18 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: "rgba(255,255,255,0.6)",
   },
   progressText: {
     fontFamily: fonts.medium,
     fontSize: 14,
     color: colors.dark,
     width: 45,
-    textAlign: 'right',
+    textAlign: "right",
   },
   areaControls: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    justifyContent: "flex-end",
     gap: 8,
   },
   areaControlButton: {
@@ -413,26 +457,26 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     backgroundColor: colors.grayLight,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   addAreaCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     borderWidth: 2,
     borderColor: colors.grayBorder,
-    borderStyle: 'dashed',
+    borderStyle: "dashed",
     padding: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   addAreaIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
     backgroundColor: colors.grayLight,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 8,
   },
   addAreaText: {
@@ -441,8 +485,8 @@ const styles = StyleSheet.create({
     color: colors.grayText,
   },
   footer: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
+    flexDirection: "row",
+    backgroundColor: "#fff",
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderTopWidth: 1,
@@ -450,7 +494,7 @@ const styles = StyleSheet.create({
   },
   footerStat: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
   },
   footerStatLabel: {
     fontFamily: fonts.regular,
@@ -469,4 +513,3 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
 });
-

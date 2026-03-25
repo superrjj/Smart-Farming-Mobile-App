@@ -1,6 +1,6 @@
-import { FontAwesome } from '@expo/vector-icons';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { FontAwesome } from "@expo/vector-icons";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,48 +14,61 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Defs, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, {
+  Circle,
+  Defs,
+  Stop,
+  LinearGradient as SvgLinearGradient,
+} from "react-native-svg";
 
-import { clearAllStorage } from '@/lib/storage';
-import { supabase } from '@/lib/supabase';
+import { clearAllStorage } from "@/lib/storage";
+import { supabase } from "@/lib/supabase";
 
 const colors = {
-  brandGreen: '#3E9B4F',
-  brandBlue: '#007AFF',
-  brandGrayText: '#6B7280',
-  brandGrayBorder: '#E5E7EB',
-  cardBg: '#F9FAFB',
-  orange: '#F97316',
-  purple: '#A855F7',
+  brandGreen: "#3E9B4F",
+  brandBlue: "#007AFF",
+  brandGrayText: "#6B7280",
+  brandGrayBorder: "#E5E7EB",
+  cardBg: "#F9FAFB",
+  orange: "#F97316",
+  purple: "#A855F7",
 };
 
 const fonts = {
-  regular: 'Poppins_400Regular',
-  medium: 'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold: 'Poppins_700Bold',
+  regular: "Poppins_400Regular",
+  medium: "Poppins_500Medium",
+  semibold: "Poppins_600SemiBold",
+  bold: "Poppins_700Bold",
 };
 
 // Menu items matching wireframe
 const MENU_ITEMS = [
-  { key: 'soil', icon: 'leaf', label: 'Soil Moisture' },
-  { key: 'temp', icon: 'thermometer', label: 'Temperature' },
-  { key: 'humidity', icon: 'tint', label: 'Humidity' },
-  { key: 'weather', icon: 'cloud', label: 'Weather Update' },
-  { key: 'automated-irrigation', icon: 'refresh', label: 'Automated Irrigation' },
-  { key: 'monitoring', icon: 'line-chart', label: 'Monitoring & Adjustments' },
-  { key: 'water-requirement', icon: 'percent', label: 'Water Requirement' },
-  { key: 'irrigation-history', icon: 'folder', label: 'Irrigation & Water Logging' },
+  { key: "soil", icon: "leaf", label: "Soil Moisture" },
+  { key: "temp", icon: "thermometer", label: "Temperature" },
+  { key: "humidity", icon: "tint", label: "Humidity" },
+  { key: "weather", icon: "cloud", label: "Weather Update" },
+  {
+    key: "automated-irrigation",
+    icon: "refresh",
+    label: "Automated Irrigation",
+  },
+  { key: "monitoring", icon: "line-chart", label: "Monitoring & Adjustments" },
+  { key: "water-requirement", icon: "percent", label: "Water Requirement" },
+  {
+    key: "irrigation-history",
+    icon: "folder",
+    label: "Irrigation & Water Logging",
+  },
 ];
 
 const ANALYTICS_SUB_ITEMS = [
-  { key: 'env', label: 'Environmental Condition Pattern Analyzer' },
-  { key: 'seasonal', label: 'Seasonal Irrigation Behavior Summary' },
+  { key: "env", label: "Environmental Condition Pattern Analyzer" },
+  { key: "seasonal", label: "Seasonal Irrigation Behavior Summary" },
 ];
 
-const DRAWER_WIDTH = Math.min(320, Dimensions.get('window').width * 0.8);
+const DRAWER_WIDTH = Math.min(320, Dimensions.get("window").width * 0.8);
 
 // Circular Gauge Component
 interface GaugeProps {
@@ -78,7 +91,7 @@ function CircularGauge({
   gradientColors,
   label,
   subLabel,
-  unit = '%',
+  unit = "%",
   icon,
 }: GaugeProps) {
   const radius = (size - strokeWidth) / 2;
@@ -91,7 +104,13 @@ function CircularGauge({
       <View style={{ width: size, height: size }}>
         <Svg width={size} height={size}>
           <Defs>
-            <SvgLinearGradient id={`grad-${label}`} x1="0%" y1="0%" x2="100%" y2="0%">
+            <SvgLinearGradient
+              id={`grad-${label}`}
+              x1="0%"
+              y1="0%"
+              x2="100%"
+              y2="0%"
+            >
               <Stop offset="0%" stopColor={gradientColors[0]} />
               <Stop offset="100%" stopColor={gradientColors[1]} />
             </SvgLinearGradient>
@@ -141,27 +160,27 @@ function CircularGauge({
 
 const gaugeStyles = StyleSheet.create({
   container: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
   },
   centerContent: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   valueText: {
     fontFamily: fonts.semibold,
     fontSize: 16,
-    color: '#1F2937',
+    color: "#1F2937",
   },
   label: {
     fontFamily: fonts.medium,
     fontSize: 12,
-    color: '#1F2937',
+    color: "#1F2937",
     marginTop: 4,
   },
   subLabel: {
@@ -173,7 +192,7 @@ const gaugeStyles = StyleSheet.create({
 
 export default function DashboardScreen() {
   const params = useLocalSearchParams<{ email?: string }>();
-  const email = typeof params.email === 'string' ? params.email : '';
+  const email = typeof params.email === "string" ? params.email : "";
   const router = useRouter();
 
   // Mock sensor data - replace with real data from Supabase/sensors later
@@ -181,9 +200,9 @@ export default function DashboardScreen() {
   const temperatureValue = 24;
   const humidityPercent = 48;
   const systemActive = true;
-  const nextSchedule = 'Today, 6:00 PM';
+  const nextSchedule = "Today, 6:00 PM";
 
-  const [fullName, setFullName] = useState<string>('Farmer');
+  const [fullName, setFullName] = useState<string>("Farmer");
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
   const [loadingName, setLoadingName] = useState<boolean>(true);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -199,7 +218,10 @@ export default function DashboardScreen() {
         return true;
       };
 
-      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      const sub = BackHandler.addEventListener(
+        "hardwareBackPress",
+        onBackPress,
+      );
       return () => sub.remove();
     }, []),
   );
@@ -213,17 +235,17 @@ export default function DashboardScreen() {
 
       try {
         const { data, error } = await supabase
-          .from('user_profiles')
-          .select('name, profile_picture')
-          .eq('email', email)
+          .from("user_profiles")
+          .select("name, profile_picture")
+          .eq("email", email)
           .maybeSingle();
 
         if (!error && data) {
-          setFullName(data.name || 'Farmer');
+          setFullName(data.name || "Farmer");
           setProfilePicture(data.profile_picture);
         }
       } catch (error) {
-        console.error('Error fetching profile:', error);
+        console.error("Error fetching profile:", error);
       } finally {
         setLoadingName(false);
       }
@@ -241,11 +263,11 @@ export default function DashboardScreen() {
   }, [menuOpen, drawerX]);
 
   const handleLogout = () => {
-    Alert.alert('Log out', 'Are you sure you want to log out?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert("Log out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
       {
-        text: 'Log Out',
-        style: 'destructive',
+        text: "Log Out",
+        style: "destructive",
         onPress: async () => {
           setMenuOpen(false);
           setLoggingOut(true);
@@ -256,12 +278,12 @@ export default function DashboardScreen() {
             // use clearAllStorage() instead.
             await clearAllStorage();
             // Small delay to show loader; navigation time still depends on device/network
-            await new Promise(resolve => setTimeout(resolve, 600));
-            router.replace('/UserManagement/login');
+            await new Promise((resolve) => setTimeout(resolve, 600));
+            router.replace("/UserManagement/login");
           } catch (error) {
-            console.error('Error during logout:', error);
+            console.error("Error during logout:", error);
             // Still navigate to login even if storage clear fails
-            router.replace('/UserManagement/login');
+            router.replace("/UserManagement/login");
           } finally {
             setLoggingOut(false);
           }
@@ -273,59 +295,59 @@ export default function DashboardScreen() {
   const handleMenuNavigate = (itemKey: string) => {
     setMenuOpen(false);
 
-    if (itemKey === 'weather') {
+    if (itemKey === "weather") {
       router.push({
-        pathname: '/UserManagement/weatherUpdate',
+        pathname: "/UserManagement/weatherUpdate",
         params: { email },
       });
-    } else if (itemKey === 'humidity') {
+    } else if (itemKey === "humidity") {
       router.push({
-        pathname: '/UserManagement/humidity',
+        pathname: "/UserManagement/humidity",
         params: { email },
       });
-    } else if (itemKey === 'temp') {
+    } else if (itemKey === "temp") {
       router.push({
-        pathname: '/UserManagement/temperature',
+        pathname: "/UserManagement/temperature",
         params: { email },
       });
-    } else if (itemKey === 'soil') {
+    } else if (itemKey === "soil") {
       router.push({
-        pathname: '/UserManagement/soilMoisture',
+        pathname: "/UserManagement/soilMoisture",
         params: { email },
       });
-    } else if (itemKey === 'water') {
+    } else if (itemKey === "water") {
       router.push({
-        pathname: '/UserManagement/waterDistribution',
+        pathname: "/UserManagement/waterDistribution",
         params: { email },
       });
-    } else if (itemKey === 'schedule') {
+    } else if (itemKey === "schedule") {
       router.push({
-        pathname: '/UserManagement/irrigationSchedule',
+        pathname: "/UserManagement/irrigationSchedule",
         params: { email },
       });
-    } else if (itemKey === 'water-requirement') {
+    } else if (itemKey === "water-requirement") {
       router.push({
-        pathname: '/UserManagement/waterRequirement',
+        pathname: "/UserManagement/waterRequirement",
         params: { email },
       });
-    } else if (itemKey === 'irrigation-history') {
+    } else if (itemKey === "irrigation-history") {
       router.push({
-        pathname: '/UserManagement/irrigationHistory',
+        pathname: "/UserManagement/irrigationHistory",
         params: { email },
       });
-    } else if (itemKey === 'automated-irrigation') {
+    } else if (itemKey === "automated-irrigation") {
       router.push({
-        pathname: '/UserManagement/irrigationSchedule',
+        pathname: "/UserManagement/waterDistribution",
         params: { email },
       });
-    } else if (itemKey === 'monitoring') {
+    } else if (itemKey === "monitoring") {
       router.push({
-        pathname: '/UserManagement/monitoringAdjustments',
+        pathname: "/UserManagement/irrigationSchedule",
         params: { email },
       });
-    } else if (itemKey === 'settings') {
+    } else if (itemKey === "settings") {
       router.push({
-        pathname: '/UserManagement/settings',
+        pathname: "/UserManagement/settings",
         params: { email },
       });
     }
@@ -351,8 +373,8 @@ export default function DashboardScreen() {
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}>
-
+          showsVerticalScrollIndicator={false}
+        >
           {/* System Status Card */}
           <View style={[styles.card, styles.systemCard]}>
             <Text style={styles.systemCardTitle}>System Status</Text>
@@ -360,26 +382,35 @@ export default function DashboardScreen() {
             <View style={styles.systemHeaderRow}>
               <View style={styles.systemHeaderText}>
                 <Text style={styles.greetingText}>
-                  Hi, {(() => {
-                    const nameParts = fullName.trim().split(/\s+/).filter(part => part.length > 0);
-                    if (nameParts.length === 0) return 'Farmer';
+                  Hi,{" "}
+                  {(() => {
+                    const nameParts = fullName
+                      .trim()
+                      .split(/\s+/)
+                      .filter((part) => part.length > 0);
+                    if (nameParts.length === 0) return "Farmer";
                     if (nameParts.length === 1) return nameParts[0];
                     // If 2 or more names, show first two names
                     return `${nameParts[0]} ${nameParts[1]}`;
                   })()}
                 </Text>
                 <Text style={styles.systemSubtitle}>
-                  Your string beans irrigation is{' '}
-                  {systemActive ? 'running smoothly.' : 'currently paused.'}
+                  Your string beans irrigation is{" "}
+                  {systemActive ? "running smoothly." : "currently paused."}
                 </Text>
               </View>
 
               <View style={styles.systemBadge}>
-                <View style={[styles.statusIcon, systemActive && styles.statusIconActive]}>
+                <View
+                  style={[
+                    styles.statusIcon,
+                    systemActive && styles.statusIconActive,
+                  ]}
+                >
                   <FontAwesome name="check" size={18} color="#fff" />
                 </View>
                 <Text style={styles.statusBadgeText}>
-                  {systemActive ? 'Active' : 'Inactive'}
+                  {systemActive ? "Active" : "Inactive"}
                 </Text>
               </View>
             </View>
@@ -402,27 +433,48 @@ export default function DashboardScreen() {
               <CircularGauge
                 value={soilMoisturePercent}
                 maxValue={100}
-                gradientColors={['#60A5FA', '#3B82F6']}
+                gradientColors={["#60A5FA", "#3B82F6"]}
                 label="Soil Moisture"
                 subLabel="Optimal"
-                icon={<FontAwesome name="tint" size={14} color="#3B82F6" style={{ marginBottom: 2 }} />}
+                icon={
+                  <FontAwesome
+                    name="tint"
+                    size={14}
+                    color="#3B82F6"
+                    style={{ marginBottom: 2 }}
+                  />
+                }
               />
               <CircularGauge
                 value={temperatureValue}
                 maxValue={50}
-                gradientColors={['#FBBF24', '#F97316']}
+                gradientColors={["#FBBF24", "#F97316"]}
                 label="Temperature"
                 subLabel="Mild"
                 unit="°C"
-                icon={<FontAwesome name="thermometer" size={14} color="#F97316" style={{ marginBottom: 2 }} />}
+                icon={
+                  <FontAwesome
+                    name="thermometer"
+                    size={14}
+                    color="#F97316"
+                    style={{ marginBottom: 2 }}
+                  />
+                }
               />
               <CircularGauge
                 value={humidityPercent}
                 maxValue={100}
-                gradientColors={['#C084FC', '#A855F7']}
+                gradientColors={["#C084FC", "#A855F7"]}
                 label="Humidity"
                 subLabel="Comfortable"
-                icon={<FontAwesome name="cloud" size={14} color="#A855F7" style={{ marginBottom: 2 }} />}
+                icon={
+                  <FontAwesome
+                    name="cloud"
+                    size={14}
+                    color="#A855F7"
+                    style={{ marginBottom: 2 }}
+                  />
+                }
               />
             </View>
           </View>
@@ -454,12 +506,14 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </View>
           </View>
-
         </ScrollView>
 
         {/* Backdrop for drawer */}
         {menuOpen && (
-          <Pressable style={styles.backdrop} onPress={() => setMenuOpen(false)} />
+          <Pressable
+            style={styles.backdrop}
+            onPress={() => setMenuOpen(false)}
+          />
         )}
 
         {/* Sliding sidebar menu */}
@@ -469,23 +523,30 @@ export default function DashboardScreen() {
             {
               transform: [{ translateX: drawerX }],
             },
-          ]}>
+          ]}
+        >
           <ScrollView
             contentContainerStyle={styles.drawerContent}
-            showsVerticalScrollIndicator={false}>
+            showsVerticalScrollIndicator={false}
+          >
             {/* User header inside drawer */}
             <View style={styles.userHeader}>
               {profilePicture ? (
-                <Image 
-                  source={{ uri: profilePicture }} 
+                <Image
+                  source={{ uri: profilePicture }}
                   style={styles.profilePicture}
                   onError={(e) => {
-                    console.log('Profile picture failed to load:', profilePicture);
+                    console.log(
+                      "Profile picture failed to load:",
+                      profilePicture,
+                    );
                   }}
                 />
               ) : (
                 <View style={styles.avatarCircle}>
-                  <Text style={styles.avatarInitial}>{fullName.charAt(0).toUpperCase()}</Text>
+                  <Text style={styles.avatarInitial}>
+                    {fullName.charAt(0).toUpperCase()}
+                  </Text>
                 </View>
               )}
               <View style={styles.userInfo}>
@@ -505,47 +566,70 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={styles.analyticsHeader}
                 activeOpacity={0.8}
-                onPress={() => setAnalyticsOpen(prev => !prev)}>
+                onPress={() => setAnalyticsOpen((prev) => !prev)}
+              >
                 <View style={styles.menuItemLeft}>
-                  <FontAwesome name="bar-chart" size={18} color={colors.brandBlue} />
-                  <Text style={styles.menuItemLabel}>Analytics &amp; Reporting</Text>
+                  <FontAwesome
+                    name="bar-chart"
+                    size={18}
+                    color={colors.brandBlue}
+                  />
+                  <Text style={styles.menuItemLabel}>
+                    Analytics &amp; Reporting
+                  </Text>
                 </View>
                 <FontAwesome
-                  name={analyticsOpen ? 'chevron-up' : 'chevron-down'}
+                  name={analyticsOpen ? "chevron-up" : "chevron-down"}
                   size={14}
                   color={colors.brandGrayText}
                 />
               </TouchableOpacity>
 
               {analyticsOpen &&
-                ANALYTICS_SUB_ITEMS.map(sub => (
+                ANALYTICS_SUB_ITEMS.map((sub) => (
                   <TouchableOpacity
                     key={sub.key}
                     style={styles.subMenuItem}
                     activeOpacity={0.8}
                     onPress={() => {
                       setMenuOpen(false);
-                      if (sub.key === 'env') {
-                        router.push({ pathname: '/UserManagement/patternAnalyzer', params: { email } });
-                      } else if (sub.key === 'seasonal') {
-                        router.push({ pathname: '/UserManagement/seasonalSummary', params: { email } });
+                      if (sub.key === "env") {
+                        router.push({
+                          pathname: "/UserManagement/patternAnalyzer",
+                          params: { email },
+                        });
+                      } else if (sub.key === "seasonal") {
+                        router.push({
+                          pathname: "/UserManagement/seasonalSummary",
+                          params: { email },
+                        });
                       }
-                    }}>
+                    }}
+                  >
                     <Text style={styles.subMenuItemLabel}>{sub.label}</Text>
                   </TouchableOpacity>
                 ))}
 
-              {MENU_ITEMS.map(item => (
+              {MENU_ITEMS.map((item) => (
                 <TouchableOpacity
                   key={item.key}
                   style={styles.menuItem}
                   activeOpacity={0.8}
-                  onPress={() => handleMenuNavigate(item.key)}>
+                  onPress={() => handleMenuNavigate(item.key)}
+                >
                   <View style={styles.menuItemLeft}>
-                    <FontAwesome name={item.icon as any} size={18} color={colors.brandBlue} />
+                    <FontAwesome
+                      name={item.icon as any}
+                      size={18}
+                      color={colors.brandBlue}
+                    />
                     <Text style={styles.menuItemLabel}>{item.label}</Text>
                   </View>
-                  <FontAwesome name="chevron-right" size={14} color={colors.brandGrayText} />
+                  <FontAwesome
+                    name="chevron-right"
+                    size={14}
+                    color={colors.brandGrayText}
+                  />
                 </TouchableOpacity>
               ))}
 
@@ -553,16 +637,25 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={styles.menuItem}
                 activeOpacity={0.8}
-                onPress={() => handleMenuNavigate('settings')}>
+                onPress={() => handleMenuNavigate("settings")}
+              >
                 <View style={styles.menuItemLeft}>
                   <FontAwesome name="cog" size={18} color={colors.brandBlue} />
                   <Text style={styles.menuItemLabel}>Settings</Text>
                 </View>
-                <FontAwesome name="chevron-right" size={14} color={colors.brandGrayText} />
+                <FontAwesome
+                  name="chevron-right"
+                  size={14}
+                  color={colors.brandGrayText}
+                />
               </TouchableOpacity>
 
               {/* Logout */}
-              <TouchableOpacity style={styles.logoutItem} activeOpacity={0.8} onPress={handleLogout}>
+              <TouchableOpacity
+                style={styles.logoutItem}
+                activeOpacity={0.8}
+                onPress={handleLogout}
+              >
                 <View style={styles.menuItemLeft}>
                   <FontAwesome name="sign-out" size={18} color="#FF3B30" />
                   <Text style={styles.logoutLabel}>Log Out</Text>
@@ -586,24 +679,24 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
   },
   container: {
     flex: 1,
   },
   topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.brandGrayBorder,
   },
   topBarRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   iconButton: {
@@ -617,10 +710,10 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
@@ -629,7 +722,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontFamily: fonts.semibold,
     fontSize: 16,
-    color: '#1F2937',
+    color: "#1F2937",
     marginBottom: 12,
   },
   // System overview card
@@ -640,15 +733,15 @@ const styles = StyleSheet.create({
   systemCardTitle: {
     fontFamily: fonts.medium,
     fontSize: 13,
-    color: 'rgba(255,255,255,0.85)',
-    textTransform: 'uppercase',
+    color: "rgba(255,255,255,0.85)",
+    textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: 6,
   },
   systemHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 14,
   },
   systemHeaderText: {
@@ -658,42 +751,42 @@ const styles = StyleSheet.create({
   greetingText: {
     fontFamily: fonts.semibold,
     fontSize: 18,
-    color: '#ffffff',
+    color: "#ffffff",
     marginBottom: 4,
   },
   systemSubtitle: {
     fontFamily: fonts.regular,
     fontSize: 13,
-    color: 'rgba(255,255,255,0.9)',
+    color: "rgba(255,255,255,0.9)",
   },
   systemBadge: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   statusBadgeText: {
     marginTop: 6,
     fontFamily: fonts.medium,
     fontSize: 13,
-    color: '#ECFDF5',
+    color: "#ECFDF5",
   },
   // System Status
   statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 12,
   },
   statusLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   statusIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#9CA3AF',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#9CA3AF",
+    justifyContent: "center",
+    alignItems: "center",
   },
   statusIconActive: {
     backgroundColor: colors.brandGreen,
@@ -701,53 +794,53 @@ const styles = StyleSheet.create({
   statusText: {
     fontFamily: fonts.semibold,
     fontSize: 16,
-    color: '#1F2937',
+    color: "#1F2937",
   },
   scheduleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginTop: 8,
   },
   scheduleLabel: {
     fontFamily: fonts.regular,
     fontSize: 12,
-    color: 'rgba(255,255,255,0.85)',
+    color: "rgba(255,255,255,0.85)",
   },
   scheduleTime: {
     fontFamily: fonts.medium,
     fontSize: 14,
-    color: '#ffffff',
+    color: "#ffffff",
   },
   pauseButton: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: "rgba(255,255,255,0.1)",
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: "rgba(255,255,255,0.4)",
   },
   pauseButtonText: {
     fontFamily: fonts.medium,
     fontSize: 13,
-    color: '#ffffff',
+    color: "#ffffff",
   },
   // Gauges
   gaugesRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "flex-start",
     paddingVertical: 8,
   },
   // Quick Controls
   controlsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
     paddingVertical: 8,
   },
   controlButton: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
     paddingVertical: 8,
     borderRadius: 12,
@@ -757,50 +850,50 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#EEF2FF',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#EEF2FF",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 8,
   },
   controlLabel: {
     fontFamily: fonts.regular,
     fontSize: 12,
-    color: '#1F2937',
-    textAlign: 'center',
+    color: "#1F2937",
+    textAlign: "center",
   },
   menuGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
     rowGap: 12,
     marginTop: 4,
   },
   menuTile: {
-    width: '48%',
+    width: "48%",
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 12,
     backgroundColor: colors.cardBg,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
   },
   menuTileIconCircle: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#EEF2FF',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#EEF2FF",
+    justifyContent: "center",
+    alignItems: "center",
   },
   menuTileLabel: {
     fontFamily: fonts.medium,
     fontSize: 13,
-    color: '#111827',
-    textAlign: 'center',
+    color: "#111827",
+    textAlign: "center",
   },
   userHeader: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 20,
     borderRadius: 20,
     borderWidth: 1,
@@ -812,9 +905,9 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#E6F4FE',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#E6F4FE",
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatarInitial: {
     fontFamily: fonts.semibold,
@@ -825,7 +918,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
   userInfo: {
     marginTop: 12,
@@ -838,7 +931,7 @@ const styles = StyleSheet.create({
   userName: {
     fontFamily: fonts.semibold,
     fontSize: 18,
-    color: '#111827',
+    color: "#111827",
   },
   menuSection: {
     borderRadius: 12,
@@ -854,33 +947,33 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.brandGrayBorder,
   },
   menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.brandGrayBorder,
   },
   menuItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
   },
   menuItemLabel: {
     fontFamily: fonts.regular,
     fontSize: 15,
-    color: '#000',
+    color: "#000",
   },
   analyticsHeader: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.brandGrayBorder,
-    backgroundColor: '#F7F7F8',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    backgroundColor: "#F7F7F8",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   subMenuItem: {
     paddingLeft: 40,
@@ -895,8 +988,8 @@ const styles = StyleSheet.create({
     color: colors.brandGrayText,
   },
   logoutItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
     marginTop: 4,
@@ -904,24 +997,24 @@ const styles = StyleSheet.create({
   logoutLabel: {
     fontFamily: fonts.medium,
     fontSize: 15,
-    color: '#FF3B30',
+    color: "#FF3B30",
   },
   backdrop: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    backgroundColor: "rgba(0,0,0,0.25)",
   },
   drawer: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     bottom: 0,
     left: 0,
     width: DRAWER_WIDTH,
-    backgroundColor: '#fff',
-    shadowColor: '#000',
+    backgroundColor: "#fff",
+    shadowColor: "#000",
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 6,
@@ -931,21 +1024,19 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   loadingOverlay: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingText: {
     marginTop: 8,
     fontFamily: fonts.medium,
     fontSize: 16,
-    color: '#fff',
+    color: "#fff",
   },
 });
-
-
