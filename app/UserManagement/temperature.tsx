@@ -1,9 +1,11 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Polyline, Rect } from 'react-native-svg';
+
+import { supabase } from '@/lib/supabase';
 
 const colors = {
   primary: '#F97316',
@@ -23,17 +25,11 @@ const fonts = {
   bold: 'Poppins_700Bold',
 };
 
-const TEMP_POINTS = [24, 25, 24.5, 26, 27, 26, 28];
-const AREAS = [
-  { id: 1, name: 'Area 1', temperature: 27 },
-  { id: 2, name: 'Area 2', temperature: 29 },
-  { id: 3, name: 'Area 3', temperature: 25 },
-];
-
 function LineChart({ data, color }: { data: number[]; color: string }) {
   const { points } = useMemo(() => {
     const w = 240;
     const h = 120;
+    if (data.length === 0) return { points: '' };
     const max = Math.max(...data);
     const min = Math.min(...data);
     const range = Math.max(1, max - min);
@@ -80,6 +76,57 @@ function Thermometer({ value }: { value: number }) {
 
 export default function TemperatureScreen() {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [trendData, setTrendData] = useState<number[]>([]);
+  const [currentValue, setCurrentValue] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchSensorData();
+  }, []);
+
+  const fetchSensorData = async () => {
+    try {
+      // Fetch latest readings for temperature (sensor_id = 1)
+      const { data, error } = await supabase
+        .from('sensor_reading')
+        .select('value, timestamp')
+        .eq('sensor_id', 1)
+        .order('timestamp', { ascending: false })
+        .limit(7);
+
+      if (error) {
+        console.error('Error fetching temperature data:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const reversed = [...data].reverse();
+        setTrendData(reversed.map(d => d.value));
+        setCurrentValue(data[0].value);
+      }
+    } catch (error) {
+      console.error('Error fetching temperature data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatus = (val: number) => {
+    if (val >= 24 && val <= 30) return 'Optimal';
+    if (val < 24) return 'Cool';
+    return 'Hot';
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading sensor data...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -91,9 +138,6 @@ export default function TemperatureScreen() {
           <View style={styles.titleWrap}>
             <Text style={styles.title}>TEMPERATURE</Text>
           </View>
-          <TouchableOpacity style={styles.iconButton}>
-            <FontAwesome name="plus" size={18} color={colors.primary} />
-          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -105,11 +149,17 @@ export default function TemperatureScreen() {
               <Text style={styles.cardTitle}>Today trend</Text>
               <Text style={styles.cardPill}>Live</Text>
             </View>
-            <LineChart data={TEMP_POINTS} color={colors.primary} />
+            {trendData.length > 0 ? (
+              <LineChart data={trendData} color={colors.primary} />
+            ) : (
+              <Text style={styles.noDataText}>No trend data available</Text>
+            )}
             <View style={styles.metricsRow}>
               <View>
                 <Text style={styles.metricLabel}>Current</Text>
-                <Text style={styles.metricValue}>27.0°C</Text>
+                <Text style={styles.metricValue}>
+                  {currentValue !== null ? `${currentValue.toFixed(1)}°C` : '--'}
+                </Text>
               </View>
               <View>
                 <Text style={styles.metricLabel}>Comfort range</Text>
@@ -118,23 +168,18 @@ export default function TemperatureScreen() {
             </View>
           </View>
 
-          {AREAS.map(area => (
-            <View key={area.id} style={styles.areaCard}>
+          {currentValue !== null && (
+            <View style={styles.areaCard}>
               <View style={styles.areaHeader}>
-                <Text style={styles.areaName}>{area.name}</Text>
-                <TouchableOpacity>
-                  <FontAwesome name="info-circle" size={16} color={colors.subText} />
-                </TouchableOpacity>
+                <Text style={styles.areaName}>Latest Reading</Text>
               </View>
-              <Thermometer value={area.temperature} />
+              <Thermometer value={currentValue} />
               <View style={styles.areaFooter}>
                 <Text style={styles.areaFootLabel}>Status</Text>
-                <Text style={styles.areaFootValue}>
-                  {area.temperature >= 24 && area.temperature <= 30 ? 'Optimal' : 'Watch'}
-                </Text>
+                <Text style={styles.areaFootValue}>{getStatus(currentValue)}</Text>
               </View>
             </View>
-          ))}
+          )}
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -144,6 +189,8 @@ export default function TemperatureScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.bg },
   container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { marginTop: 12, fontFamily: fonts.medium, fontSize: 16, color: colors.subText },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -162,15 +209,6 @@ const styles = StyleSheet.create({
   backButton: { padding: 6 },
   titleWrap: { flex: 1, marginLeft: 8 },
   title: { fontFamily: fonts.bold, fontSize: 18, color: colors.text, letterSpacing: 0.4 },
-  subtitle: { fontFamily: fonts.regular, fontSize: 12, color: colors.subText, marginTop: 2 },
-  iconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#FFF1E6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, gap: 14 },
   card: {
@@ -200,6 +238,7 @@ const styles = StyleSheet.create({
   metricsRow: { flexDirection: 'row', justifyContent: 'space-between' },
   metricLabel: { fontFamily: fonts.regular, fontSize: 12, color: colors.subText },
   metricValue: { fontFamily: fonts.bold, fontSize: 18, color: colors.text, marginTop: 2 },
+  noDataText: { fontFamily: fonts.regular, fontSize: 14, color: colors.subText, textAlign: 'center', paddingVertical: 20 },
   areaCard: {
     backgroundColor: colors.card,
     borderRadius: 14,
@@ -216,4 +255,3 @@ const styles = StyleSheet.create({
   areaFootLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.subText },
   areaFootValue: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primaryDark },
 });
-

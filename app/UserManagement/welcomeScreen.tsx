@@ -1,6 +1,8 @@
-import { Image, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from 'expo-router';
 import { setFirstLaunchComplete } from '@/lib/storage';
+import { scale, fontScale } from '@/lib/responsive';
 import { useEffect } from 'react';
 
 const colors = {
@@ -104,53 +106,53 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fonts.bold,
-    fontSize: 24,
+    fontSize: fontScale(24),
     color: colors.textDark,
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: scale(8),
   },
   subtitle: {
     fontFamily: fonts.regular,
-    fontSize: 14,
+    fontSize: fontScale(14),
     color: colors.textMuted,
     textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
+    lineHeight: scale(20),
+    marginBottom: scale(20),
   },
   dots: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 24,
+    marginBottom: scale(24),
   },
   dot: {
-    width: 7,
-    height: 7,
+    width: scale(7),
+    height: scale(7),
     borderRadius: 999,
     backgroundColor: colors.dotInactive,
   },
   dotActive: {
-    width: 18,
+    width: scale(18),
     borderRadius: 999,
     backgroundColor: colors.brandGreen,
   },
   loginButton: {
     backgroundColor: colors.brandGreen,
     borderRadius: 999,
-    paddingVertical: 14,
+    paddingVertical: scale(14),
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
+    marginBottom: scale(14),
   },
   loginButtonText: {
     fontFamily: fonts.semibold,
-    fontSize: 16,
+    fontSize: fontScale(16),
     color: '#ffffff',
   },
   createAccountText: {
     fontFamily: fonts.medium,
-    fontSize: 16,
+    fontSize: fontScale(16),
     color: colors.brandBlue,
     textAlign: 'center',
   },

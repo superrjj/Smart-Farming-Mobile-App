@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { isFirstLaunch, isRememberMeEnabled, getSavedCredentials, getLoggedInEmail, clearSavedCredentials } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
+import { scale, fontScale } from '@/lib/responsive';
 import * as Crypto from 'expo-crypto';
 
 const colors = {
@@ -129,13 +130,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    width: 200,
-    height: 200,
+    width: scale(200),
+    height: scale(200),
     tintColor: '#fff',
-    marginBottom: 40,
+    marginBottom: scale(40),
   },
   loader: {
-    marginTop: 20,
+    marginTop: scale(20),
   },
 });
 

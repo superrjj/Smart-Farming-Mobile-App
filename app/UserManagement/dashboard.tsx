@@ -195,12 +195,52 @@ export default function DashboardScreen() {
   const email = typeof params.email === "string" ? params.email : "";
   const router = useRouter();
 
-  // Mock sensor data - replace with real data from Supabase/sensors later
-  const soilMoisturePercent = 65;
-  const temperatureValue = 24;
-  const humidityPercent = 48;
+  // Live sensor data from sensor_reading table
+  const [soilMoisturePercent, setSoilMoisturePercent] = useState<number>(0);
+  const [temperatureValue, setTemperatureValue] = useState<number>(0);
+  const [humidityPercent, setHumidityPercent] = useState<number>(0);
   const systemActive = true;
   const nextSchedule = "Today, 6:00 PM";
+
+  useEffect(() => {
+    const fetchSensorData = async () => {
+      try {
+        // Fetch latest soil moisture (sensor_id = 3)
+        const { data: soilData } = await supabase
+          .from('sensor_reading')
+          .select('value')
+          .eq('sensor_id', 3)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (soilData) setSoilMoisturePercent(Math.round(soilData.value));
+
+        // Fetch latest temperature (sensor_id = 1)
+        const { data: tempData } = await supabase
+          .from('sensor_reading')
+          .select('value')
+          .eq('sensor_id', 1)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (tempData) setTemperatureValue(Math.round(tempData.value * 10) / 10);
+
+        // Fetch latest humidity (sensor_id = 2)
+        const { data: humidData } = await supabase
+          .from('sensor_reading')
+          .select('value')
+          .eq('sensor_id', 2)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (humidData) setHumidityPercent(Math.round(humidData.value));
+      } catch (error) {
+        console.error('Error fetching sensor data:', error);
+      }
+    };
+
+    fetchSensorData();
+  }, []);
 
   const [fullName, setFullName] = useState<string>("Farmer");
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
@@ -361,12 +401,7 @@ export default function DashboardScreen() {
           <TouchableOpacity onPress={() => setMenuOpen(true)}>
             <FontAwesome name="bars" size={22} color="#000" />
           </TouchableOpacity>
-
-          <View style={styles.topBarRight}>
-            <TouchableOpacity style={styles.iconButton}>
-              <FontAwesome name="bell" size={20} color="#000" />
-            </TouchableOpacity>
-          </View>
+          <View />
         </View>
 
         {/* Main dashboard content */}
@@ -435,7 +470,7 @@ export default function DashboardScreen() {
                 maxValue={100}
                 gradientColors={["#60A5FA", "#3B82F6"]}
                 label="Soil Moisture"
-                subLabel="Optimal"
+                subLabel={soilMoisturePercent >= 60 && soilMoisturePercent <= 80 ? 'Optimal' : soilMoisturePercent < 60 ? 'Low' : 'High'}
                 icon={
                   <FontAwesome
                     name="tint"
@@ -450,7 +485,7 @@ export default function DashboardScreen() {
                 maxValue={50}
                 gradientColors={["#FBBF24", "#F97316"]}
                 label="Temperature"
-                subLabel="Mild"
+                subLabel={temperatureValue >= 24 && temperatureValue <= 30 ? 'Mild' : temperatureValue < 24 ? 'Cool' : 'Hot'}
                 unit="°C"
                 icon={
                   <FontAwesome
@@ -466,7 +501,7 @@ export default function DashboardScreen() {
                 maxValue={100}
                 gradientColors={["#C084FC", "#A855F7"]}
                 label="Humidity"
-                subLabel="Comfortable"
+                subLabel={humidityPercent >= 40 && humidityPercent <= 70 ? 'Comfortable' : humidityPercent < 40 ? 'Dry' : 'Humid'}
                 icon={
                   <FontAwesome
                     name="cloud"
@@ -693,14 +728,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.brandGrayBorder,
-  },
-  topBarRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  iconButton: {
-    padding: 4,
   },
   scroll: {
     flex: 1,

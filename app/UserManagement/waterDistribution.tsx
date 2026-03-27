@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { scale, fontScale } from "@/lib/responsive";
 
 const colors = {
   primary: "#0891B2",
@@ -266,7 +267,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 4,
-    width: 32,
+    width: scale(32),
   },
   titleRow: {
     flexDirection: "row",
@@ -275,7 +276,7 @@ const styles = StyleSheet.create({
   },
   topBarTitle: {
     fontFamily: fonts.bold,
-    fontSize: 16,
+    fontSize: fontScale(16),
     color: colors.dark,
     letterSpacing: 0.5,
   },
@@ -294,7 +295,7 @@ const styles = StyleSheet.create({
     flexDirection: "column",
     alignItems: "center",
     paddingVertical: 20,
-    paddingHorizontal: 40,
+    paddingHorizontal: scale(40),
     gap: 12,
     backgroundColor: "#fff",
   },
@@ -327,7 +328,7 @@ const styles = StyleSheet.create({
   },
   controlButtonText: {
     fontFamily: fonts.bold,
-    fontSize: 16,
+    fontSize: fontScale(16),
     letterSpacing: 1,
   },
   startButtonText: {
@@ -361,7 +362,7 @@ const styles = StyleSheet.create({
   },
   areaName: {
     fontFamily: fonts.semibold,
-    fontSize: 16,
+    fontSize: fontScale(16),
     color: colors.dark,
   },
   areaStatus: {
@@ -382,7 +383,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: fontScale(12),
     color: colors.grayText,
   },
   areaStats: {
@@ -397,12 +398,12 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: fontScale(12),
     color: colors.grayText,
   },
   statValue: {
     fontFamily: fonts.medium,
-    fontSize: 12,
+    fontSize: fontScale(12),
     color: colors.dark,
   },
   progressContainer: {
@@ -442,7 +443,7 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontFamily: fonts.medium,
-    fontSize: 14,
+    fontSize: fontScale(14),
     color: colors.dark,
     width: 45,
     textAlign: "right",

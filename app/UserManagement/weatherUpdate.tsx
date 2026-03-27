@@ -1,50 +1,54 @@
-import { FontAwesome } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useState } from 'react';
+import { fontScale, scale } from "@/lib/responsive";
+import { FontAwesome } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Location from "expo-location";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Location from 'expo-location';
-import { getWeatherData } from '../../lib/weatherConfig';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { getWeatherData } from "../../lib/weatherConfig";
 
 const colors = {
-  brandBlue: '#007AFF',
-  brandBlueDark: '#004E92',
-  brandBlueLight: '#4FACFE',
-  brandGrayText: '#8A8A8E',
-  brandGrayBorder: '#D1D1D6',
-  cardBg: '#111827',
+  brandBlue: "#007AFF",
+  brandBlueDark: "#004E92",
+  brandBlueLight: "#4FACFE",
+  brandGrayText: "#8A8A8E",
+  brandGrayBorder: "#D1D1D6",
+  cardBg: "#111827",
 };
 
 const fonts = {
-  regular: 'Poppins_400Regular',
-  medium: 'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold: 'Poppins_700Bold',
+  regular: "Poppins_400Regular",
+  medium: "Poppins_500Medium",
+  semibold: "Poppins_600SemiBold",
+  bold: "Poppins_700Bold",
 };
 
 // Tarlac City boundaries (approximate)
 const TARLAC_CITY_BOUNDS = {
   minLat: 15.35,
   maxLat: 15.62,
-  minLon: 120.50,
-  maxLon: 120.70,
+  minLon: 120.5,
+  maxLon: 120.7,
 };
+
+const FIXED_LOCATION_LABEL = "Dalayap, Tarlac City, Tarlac";
 
 export default function WeatherUpdateScreen() {
   const router = useRouter();
   const [weatherData, setWeatherData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [locationName, setLocationName] = useState<string>('Tarlac City');
+  const [locationName, setLocationName] =
+    useState<string>(FIXED_LOCATION_LABEL);
 
   useEffect(() => {
     loadWeatherWithLocation();
@@ -57,9 +61,9 @@ export default function WeatherUpdateScreen() {
 
       // Request location permission
       const { status } = await Location.requestForegroundPermissionsAsync();
-      
-      if (status !== 'granted') {
-        console.log('Permission denied, using default Tarlac City coordinates');
+
+      if (status !== "granted") {
+        console.log("Permission denied, using default Tarlac City coordinates");
         await loadWeatherForDefaultLocation();
         return;
       }
@@ -71,8 +75,8 @@ export default function WeatherUpdateScreen() {
 
       const { latitude, longitude } = location.coords;
 
-      // Check if within Tarlac City bounds
-      const isInTarlacCity = 
+      // Check if within Tarlac City bounds (for validation only)
+      const isInTarlacCity =
         latitude >= TARLAC_CITY_BOUNDS.minLat &&
         latitude <= TARLAC_CITY_BOUNDS.maxLat &&
         longitude >= TARLAC_CITY_BOUNDS.minLon &&
@@ -80,41 +84,23 @@ export default function WeatherUpdateScreen() {
 
       if (!isInTarlacCity) {
         Alert.alert(
-          'Outside Tarlac City',
-          'Your current location is outside Tarlac City. Showing weather for Tarlac City center instead.',
-          [{ text: 'OK' }]
+          "Outside Tarlac City",
+          "Your current location is outside Tarlac City. Showing weather for Tarlac City center instead.",
+          [{ text: "OK" }],
         );
         await loadWeatherForDefaultLocation();
         return;
       }
 
-      // Reverse geocode to get address (barangay name)
-      try {
-        const addresses = await Location.reverseGeocodeAsync({
-          latitude,
-          longitude,
-        });
-
-        if (addresses && addresses.length > 0) {
-          const address = addresses[0];
-          // Format: "Barangay Name, Tarlac City"
-          const locationText = address.district 
-            ? `${address.district}, Tarlac City`
-            : address.subregion || 'Tarlac City';
-          setLocationName(locationText);
-        }
-      } catch (geocodeError) {
-        console.log('Geocoding failed, using coordinates:', geocodeError);
-        setLocationName(`${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E`);
-      }
+      // Always use fixed farm location label in UI for consistency
+      setLocationName(FIXED_LOCATION_LABEL);
 
       // Fetch weather data for current location
       const data = await getWeatherData(latitude, longitude);
       setWeatherData(data);
-
     } catch (err) {
-      console.error('Failed to load weather:', err);
-      setError('Failed to load weather data');
+      console.error("Failed to load weather:", err);
+      setError("Failed to load weather data");
       // Fallback to default location
       await loadWeatherForDefaultLocation();
     } finally {
@@ -124,12 +110,12 @@ export default function WeatherUpdateScreen() {
 
   async function loadWeatherForDefaultLocation() {
     try {
-      const data = await getWeatherData(); // Uses default Tarlac City center
+      const data = await getWeatherData(); // Uses default project coordinates
       setWeatherData(data);
-      setLocationName('Tarlac City (Center)');
+      setLocationName(FIXED_LOCATION_LABEL);
     } catch (err) {
-      console.error('Failed to load default weather:', err);
-      setError('Failed to load weather data');
+      console.error("Failed to load default weather:", err);
+      setError("Failed to load weather data");
     }
   }
 
@@ -148,11 +134,18 @@ export default function WeatherUpdateScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={[styles.container, styles.centerContent]}>
-          <FontAwesome name="exclamation-triangle" size={48} color={colors.brandGrayText} />
-          <Text style={styles.errorText}>{error || 'No weather data available'}</Text>
-          <TouchableOpacity 
+          <FontAwesome
+            name="exclamation-triangle"
+            size={48}
+            color={colors.brandGrayText}
+          />
+          <Text style={styles.errorText}>
+            {error || "No weather data available"}
+          </Text>
+          <TouchableOpacity
             style={styles.retryButton}
-            onPress={loadWeatherWithLocation}>
+            onPress={loadWeatherWithLocation}
+          >
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -163,15 +156,15 @@ export default function WeatherUpdateScreen() {
   // Get forecast for next 4 days including today
   const forecastDays = [];
   const today = new Date();
-  const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  
+  const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
   for (let i = 0; i < 4; i++) {
     const date = new Date(today);
     date.setDate(today.getDate() + i);
-    const dayName = i === 0 ? 'Today' : daysOfWeek[date.getDay()];
+    const dayName = i === 0 ? "Today" : daysOfWeek[date.getDay()];
     forecastDays.push(dayName);
   }
-  
+
   const forecast = forecastDays.map((day, idx) => ({
     day,
     temp: `${Math.round(weatherData.daily.temperature_2m_max[idx])}°`,
@@ -190,9 +183,10 @@ export default function WeatherUpdateScreen() {
           <Text style={styles.topBarTitle}>Weather Update</Text>
 
           <View style={styles.topBarRight}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.iconButton}
-              onPress={loadWeatherWithLocation}>
+              onPress={loadWeatherWithLocation}
+            >
               <FontAwesome name="location-arrow" size={18} color="#000" />
             </TouchableOpacity>
           </View>
@@ -201,17 +195,23 @@ export default function WeatherUpdateScreen() {
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}>
+          showsVerticalScrollIndicator={false}
+        >
           {/* Location row */}
           <View style={styles.locationRow}>
             <View>
               <Text style={styles.locationText}>{locationName}</Text>
               <Text style={styles.locationCoords}>
-                {weatherData.latitude.toFixed(4)}°N, {weatherData.longitude.toFixed(4)}°E
+                {weatherData.latitude.toFixed(4)}°N,{" "}
+                {weatherData.longitude.toFixed(4)}°E
               </Text>
             </View>
             <View style={styles.locationRight}>
-              <FontAwesome name="map-marker" size={16} color={colors.brandBlue} />
+              <FontAwesome
+                name="map-marker"
+                size={16}
+                color={colors.brandBlue}
+              />
             </View>
           </View>
 
@@ -220,7 +220,8 @@ export default function WeatherUpdateScreen() {
             colors={[colors.brandBlueLight, colors.brandBlueDark]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.mainCard}>
+            style={styles.mainCard}
+          >
             <View style={styles.mainTopRow}>
               <View>
                 <Text style={styles.mainTemp}>
@@ -230,14 +231,15 @@ export default function WeatherUpdateScreen() {
                   {getWeatherCondition(weatherData.current.weather_code)}
                 </Text>
                 <Text style={styles.mainDetail}>
-                  Feels like {Math.round(weatherData.current.apparent_temperature)}°
+                  Feels like{" "}
+                  {Math.round(weatherData.current.apparent_temperature)}°
                 </Text>
               </View>
               <View style={styles.mainIconCircle}>
-                <FontAwesome 
-                  name={getWeatherIcon(weatherData.current.weather_code) as any} 
-                  size={38} 
-                  color="#fff" 
+                <FontAwesome
+                  name={getWeatherIcon(weatherData.current.weather_code) as any}
+                  size={38}
+                  color="#fff"
                 />
               </View>
             </View>
@@ -246,7 +248,8 @@ export default function WeatherUpdateScreen() {
               <View style={styles.infoPill}>
                 <FontAwesome name="tint" size={14} color="#fff" />
                 <Text style={styles.infoPillText}>
-                  Humidity {Math.round(weatherData.current.relative_humidity_2m)}%
+                  Humidity{" "}
+                  {Math.round(weatherData.current.relative_humidity_2m)}%
                 </Text>
               </View>
               <View style={styles.infoPill}>
@@ -284,15 +287,19 @@ export default function WeatherUpdateScreen() {
           <View style={styles.forecastCard}>
             <Text style={styles.forecastTitle}>Next days</Text>
             {forecast.map((f, idx) => (
-              <View 
-                key={f.day} 
-                style={[styles.forecastRow, idx !== 0 && styles.forecastRowDivider]}>
+              <View
+                key={f.day}
+                style={[
+                  styles.forecastRow,
+                  idx !== 0 && styles.forecastRowDivider,
+                ]}
+              >
                 <Text style={styles.forecastDay}>{f.day}</Text>
                 <View style={styles.forecastRight}>
-                  <FontAwesome 
-                    name={f.icon as any} 
-                    size={18} 
-                    color={colors.brandBlueLight} 
+                  <FontAwesome
+                    name={f.icon as any}
+                    size={18}
+                    color={colors.brandBlueLight}
                   />
                   <Text style={styles.forecastTemp}>{f.temp}</Text>
                 </View>
@@ -307,39 +314,39 @@ export default function WeatherUpdateScreen() {
 
 // Helper function to get weather icon based on WMO code
 function getWeatherIcon(code: number): string {
-  if (code === 0) return 'sun-o';
-  if (code <= 3) return 'cloud';
-  if (code <= 67) return 'tint';
-  if (code <= 77) return 'asterisk';
-  if (code <= 82) return 'tint';
-  if (code <= 86) return 'asterisk';
-  if (code >= 95) return 'bolt';
-  return 'cloud';
+  if (code === 0) return "sun-o";
+  if (code <= 3) return "cloud";
+  if (code <= 67) return "tint";
+  if (code <= 77) return "asterisk";
+  if (code <= 82) return "tint";
+  if (code <= 86) return "asterisk";
+  if (code >= 95) return "bolt";
+  return "cloud";
 }
 
 // Helper function to get weather condition text
 function getWeatherCondition(code: number): string {
-  if (code === 0) return 'Clear sky';
-  if (code <= 3) return 'Partly cloudy';
-  if (code <= 67) return 'Rain';
-  if (code <= 77) return 'Snow';
-  if (code <= 82) return 'Rain showers';
-  if (code <= 86) return 'Snow showers';
-  if (code >= 95) return 'Thunderstorm';
-  return 'Cloudy';
+  if (code === 0) return "Clear sky";
+  if (code <= 3) return "Partly cloudy";
+  if (code <= 67) return "Rain";
+  if (code <= 77) return "Snow";
+  if (code <= 82) return "Rain showers";
+  if (code <= 86) return "Snow showers";
+  if (code >= 95) return "Thunderstorm";
+  return "Cloudy";
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   container: {
     flex: 1,
   },
   centerContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
   },
   loadingText: {
@@ -351,7 +358,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 16,
     color: colors.brandGrayText,
-    textAlign: 'center',
+    textAlign: "center",
   },
   retryButton: {
     marginTop: 16,
@@ -361,14 +368,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -377,11 +384,11 @@ const styles = StyleSheet.create({
   topBarTitle: {
     fontFamily: fonts.semibold,
     fontSize: 18,
-    color: '#000',
+    color: "#000",
   },
   topBarRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   iconButton: {
@@ -395,15 +402,15 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   locationRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
   },
   locationText: {
     fontFamily: fonts.semibold,
     fontSize: 18,
-    color: '#000',
+    color: "#000",
   },
   locationCoords: {
     fontFamily: fonts.regular,
@@ -412,8 +419,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   locationRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
   mainCard: {
@@ -422,56 +429,56 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   mainTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   mainTemp: {
     fontFamily: fonts.bold,
-    fontSize: 52,
-    color: '#fff',
+    fontSize: fontScale(52),
+    color: "#fff",
   },
   mainCondition: {
     fontFamily: fonts.medium,
-    fontSize: 18,
-    color: '#E5E7EB',
+    fontSize: fontScale(18),
+    color: "#E5E7EB",
   },
   mainDetail: {
     marginTop: 4,
     fontFamily: fonts.regular,
-    fontSize: 13,
-    color: '#E5E7EB',
+    fontSize: fontScale(13),
+    color: "#E5E7EB",
   },
   mainIconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: scale(72),
+    height: scale(72),
+    borderRadius: scale(36),
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   mainBottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginTop: 16,
   },
   infoPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: "rgba(255,255,255,0.16)",
     gap: 6,
   },
   infoPillText: {
     fontFamily: fonts.regular,
     fontSize: 13,
-    color: '#fff',
+    color: "#fff",
   },
   summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 16,
   },
   summaryItem: {
@@ -487,7 +494,7 @@ const styles = StyleSheet.create({
   summaryValue: {
     fontFamily: fonts.semibold,
     fontSize: 15,
-    color: '#000',
+    color: "#000",
   },
   forecastCard: {
     borderRadius: 18,
@@ -500,12 +507,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 15,
     marginBottom: 6,
-    color: '#000',
+    color: "#000",
   },
   forecastRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: 8,
   },
   forecastRowDivider: {
@@ -515,16 +522,16 @@ const styles = StyleSheet.create({
   forecastDay: {
     fontFamily: fonts.regular,
     fontSize: 14,
-    color: '#000',
+    color: "#000",
   },
   forecastRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   forecastTemp: {
     fontFamily: fonts.medium,
     fontSize: 15,
-    color: '#000',
+    color: "#000",
   },
 });

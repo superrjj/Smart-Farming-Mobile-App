@@ -1,44 +1,109 @@
-import * as Notifications from 'expo-notifications';
+import Constants from "expo-constants";
 import { Platform } from 'react-native';
 
 // Store notification response handler and subscription
-let notificationResponseHandler: ((response: Notifications.NotificationResponse) => void) | null = null;
-let notificationResponseSubscription: Notifications.Subscription | null = null;
-let notificationReceivedSubscription: Notifications.Subscription | null = null;
+type NotificationResponse = {
+  notification: {
+    request: {
+      content: {
+        data?: Record<string, unknown>;
+      };
+    };
+  };
+};
 
-// Configure notification behavior
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+type Notification = {
+  request: {
+    content: {
+      data?: Record<string, unknown>;
+    };
+  };
+};
+
+type Subscription = { remove: () => void };
+
+const isExpoGo =
+  Constants.executionEnvironment === "storeClient" ||
+  Constants.appOwnership === "expo";
+
+let notificationResponseHandler: ((response: NotificationResponse) => void) | null =
+  null;
+let notificationResponseSubscription: Subscription | null = null;
+let notificationReceivedSubscription: Subscription | null = null;
+let notificationsModulePromise: Promise<typeof import("expo-notifications") | null> | null =
+  null;
+let notificationHandlerConfigured = false;
+
+async function getNotificationsModule(): Promise<typeof import("expo-notifications") | null> {
+  if (isExpoGo) {
+    return null;
+  }
+  if (!notificationsModulePromise) {
+    notificationsModulePromise = import("expo-notifications");
+  }
+  return notificationsModulePromise;
+}
+
+async function ensureNotificationHandler() {
+  const Notifications = await getNotificationsModule();
+  if (!Notifications || notificationHandlerConfigured) {
+    return Notifications;
+  }
+
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+
+  notificationHandlerConfigured = true;
+  return Notifications;
+}
 
 // Set up notification response listener
 export function setNotificationResponseHandler(
-  handler: (response: Notifications.NotificationResponse) => void
+  handler: (response: NotificationResponse) => void
 ) {
   notificationResponseHandler = handler;
-  
-  // Listen for notification responses (when user taps notification)
-  notificationResponseSubscription = Notifications.addNotificationResponseReceivedListener(handler);
-  
-  // Get last notification response (if app was opened from notification)
-  Notifications.getLastNotificationResponseAsync().then((response) => {
+
+  if (isExpoGo) {
+    return;
+  }
+
+  void (async () => {
+    const Notifications = await ensureNotificationHandler();
+    if (!Notifications) return;
+
+    // Listen for notification responses (when user taps notification)
+    notificationResponseSubscription =
+      Notifications.addNotificationResponseReceivedListener(handler) as Subscription;
+
+    // Get last notification response (if app was opened from notification)
+    const response = await Notifications.getLastNotificationResponseAsync();
     if (response) {
-      handler(response);
+      handler(response as NotificationResponse);
     }
-  });
+  })();
 }
 
 // Set up notification received listener (for foreground notifications)
 export function setNotificationReceivedHandler(
-  handler: (notification: Notifications.Notification) => void
+  handler: (notification: Notification) => void
 ) {
-  notificationReceivedSubscription = Notifications.addNotificationReceivedListener(handler);
+  if (isExpoGo) {
+    return;
+  }
+
+  void (async () => {
+    const Notifications = await ensureNotificationHandler();
+    if (!Notifications) return;
+    notificationReceivedSubscription =
+      Notifications.addNotificationReceivedListener(handler) as Subscription;
+  })();
 }
 
 // Remove notification response listener
@@ -57,6 +122,14 @@ export function removeNotificationResponseHandler() {
 // Request notification permissions
 export async function requestNotificationPermissions(): Promise<boolean> {
   try {
+    const Notifications = await ensureNotificationHandler();
+    if (!Notifications) {
+      console.log(
+        "expo-notifications is disabled in Expo Go. Use a development build for push notifications.",
+      );
+      return false;
+    }
+
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     
@@ -118,6 +191,9 @@ export async function scheduleIrrigationNotification(
   time: string
 ): Promise<string | null> {
   try {
+    const Notifications = await ensureNotificationHandler();
+    if (!Notifications) return null;
+
     const notificationDate = getNotificationDate(time, day, month, year);
     const now = new Date();
     
@@ -154,7 +230,7 @@ export async function scheduleIrrigationNotification(
       trigger: {
         type: 'timeInterval',
         seconds: secondsUntilNotification,
-      } as Notifications.TimeIntervalTriggerInput,
+      } as any,
     });
     
     console.log(`Scheduled notification ${notificationId} for ${day}/${month}/${year} at ${time}`);
@@ -168,6 +244,8 @@ export async function scheduleIrrigationNotification(
 // Cancel a specific notification
 export async function cancelNotification(notificationId: string): Promise<void> {
   try {
+    const Notifications = await getNotificationsModule();
+    if (!Notifications) return;
     await Notifications.cancelScheduledNotificationAsync(notificationId);
     console.log(`Cancelled notification ${notificationId}`);
   } catch (error) {
@@ -178,6 +256,8 @@ export async function cancelNotification(notificationId: string): Promise<void> 
 // Cancel all notifications
 export async function cancelAllNotifications(): Promise<void> {
   try {
+    const Notifications = await getNotificationsModule();
+    if (!Notifications) return;
     await Notifications.cancelAllScheduledNotificationsAsync();
     console.log('Cancelled all notifications');
   } catch (error) {
@@ -186,8 +266,10 @@ export async function cancelAllNotifications(): Promise<void> {
 }
 
 // Get all scheduled notifications
-export async function getAllScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
+export async function getAllScheduledNotifications(): Promise<any[]> {
   try {
+    const Notifications = await getNotificationsModule();
+    if (!Notifications) return [];
     const notifications = await Notifications.getAllScheduledNotificationsAsync();
     return notifications;
   } catch (error) {
@@ -199,6 +281,8 @@ export async function getAllScheduledNotifications(): Promise<Notifications.Noti
 // Cancel notifications for a specific schedule
 export async function cancelNotificationsForSchedule(scheduleId: string): Promise<void> {
   try {
+    const Notifications = await getNotificationsModule();
+    if (!Notifications) return;
     const allNotifications = await Notifications.getAllScheduledNotificationsAsync();
     
     for (const notification of allNotifications) {

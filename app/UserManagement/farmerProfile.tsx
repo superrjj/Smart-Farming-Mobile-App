@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '@/lib/supabase';
+import { scale, fontScale } from '@/lib/responsive';
 
 const colors = {
   brandGreen: '#22C55E',
@@ -1050,16 +1051,16 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   profilePicImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: scale(120),
+    height: scale(120),
+    borderRadius: scale(60),
     borderWidth: 3,
     borderColor: colors.brandGrayBorder,
   },
   profilePicPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: scale(120),
+    height: scale(120),
+    borderRadius: scale(60),
     backgroundColor: '#F3F4F6',
     borderWidth: 3,
     borderColor: colors.brandGrayBorder,
@@ -1088,7 +1089,7 @@ const styles = StyleSheet.create({
   },
   profilePicButtonText: {
     fontFamily: fonts.semibold,
-    fontSize: 14,
+    fontSize: fontScale(14),
     color: '#fff',
   },
   uploadingContainer: {
@@ -1100,7 +1101,7 @@ const styles = StyleSheet.create({
   },
   uploadingText: {
     fontFamily: fonts.medium,
-    fontSize: 14,
+    fontSize: fontScale(14),
     color: colors.brandGrayText,
   },
   basicInfoSection: {

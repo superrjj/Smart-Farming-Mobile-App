@@ -1,9 +1,11 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Polyline } from 'react-native-svg';
+
+import { supabase } from '@/lib/supabase';
 
 const colors = {
   primary: '#0EA5E9',
@@ -23,17 +25,11 @@ const fonts = {
   bold: 'Poppins_700Bold',
 };
 
-const HUMIDITY_POINTS = [62, 68, 64, 70, 73, 69, 75];
-const AREAS = [
-  { id: 1, name: 'Area 1', humidity: 75 },
-  { id: 2, name: 'Area 2', humidity: 68 },
-  { id: 3, name: 'Area 3', humidity: 81 },
-];
-
 function LineChart({ data, color }: { data: number[]; color: string }) {
   const { points } = useMemo(() => {
     const w = 240;
     const h = 120;
+    if (data.length === 0) return { points: '' };
     const max = Math.max(...data);
     const min = Math.min(...data);
     const range = Math.max(1, max - min);
@@ -98,6 +94,57 @@ function GaugeRing({ percent, label }: { percent: number; label: string }) {
 
 export default function HumidityScreen() {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [trendData, setTrendData] = useState<number[]>([]);
+  const [currentValue, setCurrentValue] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchSensorData();
+  }, []);
+
+  const fetchSensorData = async () => {
+    try {
+      // Fetch latest readings for humidity (sensor_id = 2)
+      const { data, error } = await supabase
+        .from('sensor_reading')
+        .select('value, timestamp')
+        .eq('sensor_id', 2)
+        .order('timestamp', { ascending: false })
+        .limit(7);
+
+      if (error) {
+        console.error('Error fetching humidity data:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const reversed = [...data].reverse();
+        setTrendData(reversed.map(d => d.value));
+        setCurrentValue(data[0].value);
+      }
+    } catch (error) {
+      console.error('Error fetching humidity data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatus = (val: number) => {
+    if (val >= 60 && val <= 80) return 'Optimal';
+    if (val < 60) return 'Low';
+    return 'High';
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading sensor data...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -111,9 +158,6 @@ export default function HumidityScreen() {
             <Text style={styles.title}>HUMIDITY</Text>
           
           </View>
-          <TouchableOpacity style={styles.iconButton}>
-            <FontAwesome name="plus" size={18} color={colors.primary} />
-          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -126,11 +170,17 @@ export default function HumidityScreen() {
               <Text style={styles.cardTitle}>Today trend</Text>
               <Text style={styles.cardPill}>Live</Text>
             </View>
-            <LineChart data={HUMIDITY_POINTS} color={colors.primary} />
+            {trendData.length > 0 ? (
+              <LineChart data={trendData} color={colors.primary} />
+            ) : (
+              <Text style={styles.noDataText}>No trend data available</Text>
+            )}
             <View style={styles.metricsRow}>
               <View>
                 <Text style={styles.metricLabel}>Current</Text>
-                <Text style={styles.metricValue}>72%</Text>
+                <Text style={styles.metricValue}>
+                  {currentValue !== null ? `${currentValue}%` : '--'}
+                </Text>
               </View>
               <View>
                 <Text style={styles.metricLabel}>Optimal range</Text>
@@ -139,22 +189,19 @@ export default function HumidityScreen() {
             </View>
           </View>
 
-          {/* Area cards */}
-          {AREAS.map(area => (
-            <View key={area.id} style={styles.areaCard}>
+          {/* Latest reading card */}
+          {currentValue !== null && (
+            <View style={styles.areaCard}>
               <View style={styles.areaHeader}>
-                <Text style={styles.areaName}>{area.name}</Text>
-                <TouchableOpacity>
-                  <FontAwesome name="info-circle" size={16} color={colors.subText} />
-                </TouchableOpacity>
+                <Text style={styles.areaName}>Latest Reading</Text>
               </View>
-              <GaugeRing percent={area.humidity} label="Humidity" />
+              <GaugeRing percent={Math.round(currentValue)} label="Humidity" />
               <View style={styles.areaFooter}>
                 <Text style={styles.areaFootLabel}>Status</Text>
-                <Text style={styles.areaFootValue}>Stable</Text>
+                <Text style={styles.areaFootValue}>{getStatus(currentValue)}</Text>
               </View>
             </View>
-          ))}
+          )}
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -164,6 +211,8 @@ export default function HumidityScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.bg },
   container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { marginTop: 12, fontFamily: fonts.medium, fontSize: 16, color: colors.subText },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -182,15 +231,6 @@ const styles = StyleSheet.create({
   backButton: { padding: 6 },
   titleWrap: { flex: 1, marginLeft: 8 },
   title: { fontFamily: fonts.bold, fontSize: 18, color: colors.text, letterSpacing: 0.4 },
-  subtitle: { fontFamily: fonts.regular, fontSize: 12, color: colors.subText, marginTop: 2 },
-  iconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, gap: 14 },
   card: {
@@ -223,6 +263,7 @@ const styles = StyleSheet.create({
   },
   metricLabel: { fontFamily: fonts.regular, fontSize: 12, color: colors.subText },
   metricValue: { fontFamily: fonts.bold, fontSize: 18, color: colors.text, marginTop: 2 },
+  noDataText: { fontFamily: fonts.regular, fontSize: 14, color: colors.subText, textAlign: 'center', paddingVertical: 20 },
   areaCard: {
     backgroundColor: colors.card,
     borderRadius: 14,
@@ -241,4 +282,3 @@ const styles = StyleSheet.create({
   areaFootLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.subText },
   areaFootValue: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primaryDark },
 });
-
