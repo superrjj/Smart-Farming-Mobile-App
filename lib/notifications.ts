@@ -1,5 +1,5 @@
 import Constants from "expo-constants";
-import { Platform } from 'react-native';
+import { Platform } from "react-native";
 
 // Store notification response handler and subscription
 type NotificationResponse = {
@@ -22,19 +22,22 @@ type Notification = {
 
 type Subscription = { remove: () => void };
 
-const isExpoGo =
-  Constants.executionEnvironment === "storeClient" ||
-  Constants.appOwnership === "expo";
+// Canonical Expo Go detection for SDK 53+: "storeClient" only in Expo Go, never in a real build
+const isExpoGo = Constants.executionEnvironment === "storeClient";
 
-let notificationResponseHandler: ((response: NotificationResponse) => void) | null =
-  null;
+let notificationResponseHandler:
+  | ((response: NotificationResponse) => void)
+  | null = null;
 let notificationResponseSubscription: Subscription | null = null;
 let notificationReceivedSubscription: Subscription | null = null;
-let notificationsModulePromise: Promise<typeof import("expo-notifications") | null> | null =
-  null;
+let notificationsModulePromise: Promise<
+  typeof import("expo-notifications") | null
+> | null = null;
 let notificationHandlerConfigured = false;
 
-async function getNotificationsModule(): Promise<typeof import("expo-notifications") | null> {
+async function getNotificationsModule(): Promise<
+  typeof import("expo-notifications") | null
+> {
   if (isExpoGo) {
     return null;
   }
@@ -60,13 +63,23 @@ async function ensureNotificationHandler() {
     }),
   });
 
+  // Create the Android channel early — must exist before any notification is scheduled
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("irrigation-reminders", {
+      name: "Irrigation Schedule Reminders",
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#22C55E",
+    });
+  }
+
   notificationHandlerConfigured = true;
   return Notifications;
 }
 
 // Set up notification response listener
 export function setNotificationResponseHandler(
-  handler: (response: NotificationResponse) => void
+  handler: (response: NotificationResponse) => void,
 ) {
   notificationResponseHandler = handler;
 
@@ -80,7 +93,9 @@ export function setNotificationResponseHandler(
 
     // Listen for notification responses (when user taps notification)
     notificationResponseSubscription =
-      Notifications.addNotificationResponseReceivedListener(handler) as Subscription;
+      Notifications.addNotificationResponseReceivedListener(
+        handler,
+      ) as Subscription;
 
     // Get last notification response (if app was opened from notification)
     const response = await Notifications.getLastNotificationResponseAsync();
@@ -92,7 +107,7 @@ export function setNotificationResponseHandler(
 
 // Set up notification received listener (for foreground notifications)
 export function setNotificationReceivedHandler(
-  handler: (notification: Notification) => void
+  handler: (notification: Notification) => void,
 ) {
   if (isExpoGo) {
     return;
@@ -130,56 +145,110 @@ export async function requestNotificationPermissions(): Promise<boolean> {
       return false;
     }
 
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
-    
-    if (existingStatus !== 'granted') {
+
+    if (existingStatus !== "granted") {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-    
-    if (finalStatus !== 'granted') {
-      console.log('Failed to get push notification permissions!');
+
+    if (finalStatus !== "granted") {
+      console.log("Failed to get push notification permissions!");
       return false;
     }
-    
-    // For Android, we need to set up a notification channel
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('irrigation-reminders', {
-        name: 'Irrigation Schedule Reminders',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#22C55E',
-      });
-    }
-    
+
+    // Channel is already created in ensureNotificationHandler() above
+
     return true;
   } catch (error) {
-    console.error('Error requesting notification permissions:', error);
+    console.error("Error requesting notification permissions:", error);
     return false;
   }
 }
 
-// Convert time string (e.g., "08:00 PM") to Date object for today
-export function getNotificationDate(timeString: string, day: number, month: number, year: number): Date {
-  try {
-    const [time, period] = timeString.split(' ');
-    const [hourStr, minuteStr] = time.split(':');
-    let hour = parseInt(hourStr, 10);
-    const minute = parseInt(minuteStr, 10);
-    
-    if (period === 'PM' && hour !== 12) {
-      hour += 12;
-    } else if (period === 'AM' && hour === 12) {
-      hour = 0;
-    }
-    
-    const notificationDate = new Date(year, month - 1, day, hour, minute, 0);
-    return notificationDate;
-  } catch (error) {
-    console.error('Error parsing time string:', error);
+/** Philippines (PHT): UTC+8, no DST — irrigation times are interpreted as Manila civil time. */
+const PHILIPPINES_OFFSET = "+08:00";
+
+function pad2(n: number): string {
+  return String(Math.floor(n)).padStart(2, "0");
+}
+
+/** Today's calendar date in Asia/Manila (not the device timezone). */
+export function getPhilippinesTodayYmd(): {
+  year: number;
+  month: number;
+  day: number;
+} {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(new Date());
+  const n = (t: string) =>
+    parseInt(parts.find((p) => p.type === t)?.value ?? "0", 10);
+  return { year: n("year"), month: n("month"), day: n("day") };
+}
+
+/** &lt; 0 if before Manila today, 0 if today, &gt; 0 if after. */
+export function philippinesCalendarCompare(
+  year: number,
+  month: number,
+  day: number,
+): number {
+  const t = getPhilippinesTodayYmd();
+  if (year !== t.year) return year - t.year;
+  if (month !== t.month) return month - t.month;
+  return day - t.day;
+}
+
+/**
+ * Absolute instant when irrigation should fire: calendar (day, month, year) + time
+ * interpreted as Philippines local time (ISO with +08:00). Same instant regardless of device TZ.
+ */
+export function getNotificationDate(
+  timeString: string,
+  day: number,
+  month: number,
+  year: number,
+): Date {
+  const trimmed = timeString.trim();
+  if (!trimmed) {
     return new Date();
   }
+  try {
+    const parts = trimmed.split(/\s+/).filter(Boolean);
+    let hour = 0;
+    let minute = 0;
+
+    // 24h "14:30" or "09:05" — treated as Philippines civil time
+    if (parts.length === 1 && /^\d{1,2}:\d{2}$/.test(parts[0])) {
+      const [h, m] = parts[0].split(":").map((x) => parseInt(x, 10));
+      hour = h;
+      minute = m;
+    } else if (parts.length >= 2) {
+      const timePart = parts[0];
+      const period = parts[1].toUpperCase();
+      const [hourStr, minuteStr] = timePart.split(":");
+      hour = parseInt(hourStr, 10);
+      minute = parseInt(minuteStr ?? "0", 10);
+
+      // AM / PM / NN (noon) — common in PH ("12:00 NN")
+      if (period === "AM") {
+        if (hour === 12) hour = 0;
+      } else if (period === "PM" || period === "NN" || period === "NOON") {
+        if (hour !== 12) hour += 12;
+      }
+    }
+
+    const iso = `${year}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${pad2(minute)}:00${PHILIPPINES_OFFSET}`;
+    return new Date(iso);
+  } catch (error) {
+    console.error("Error parsing time string:", timeString, error);
+  }
+  return new Date();
 }
 
 // Schedule a notification for irrigation
@@ -188,36 +257,38 @@ export async function scheduleIrrigationNotification(
   day: number,
   month: number,
   year: number,
-  time: string
+  time: string,
 ): Promise<string | null> {
   try {
     const Notifications = await ensureNotificationHandler();
-    if (!Notifications) return null;
+    if (!Notifications) {
+      console.warn(
+        "[notifications] expo-notifications is not available (Expo Go disables it, or the native module failed to load). Use a development/production build to test scheduled alerts.",
+      );
+      return null;
+    }
 
     const notificationDate = getNotificationDate(time, day, month, year);
     const now = new Date();
-    
-    // Don't schedule if the time has already passed
+
     if (notificationDate <= now) {
-      console.log('Notification time has already passed, skipping');
+      console.log(
+        "Notification time has already passed (vs device clock), skipping",
+        time,
+        `(PH ${day}/${month}/${year})`,
+        notificationDate.toISOString(),
+      );
       return null;
     }
-    
-    // Calculate seconds until notification
-    const secondsUntilNotification = Math.floor((notificationDate.getTime() - now.getTime()) / 1000);
-    
-    if (secondsUntilNotification <= 0) {
-      console.log('Notification time has already passed, skipping');
-      return null;
-    }
-    
+
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
-        title: '🌱 Irrigation Reminder',
+        title: "🌱 Irrigation Reminder",
         body: `Time to irrigate your crops! Scheduled for ${time}`,
         sound: true,
-        ...(Platform.OS === 'android' && {
+        ...(Platform.OS === "android" && {
           priority: Notifications.AndroidNotificationPriority.HIGH,
+          channelId: "irrigation-reminders",
         }),
         data: {
           scheduleId,
@@ -228,28 +299,32 @@ export async function scheduleIrrigationNotification(
         },
       },
       trigger: {
-        type: 'timeInterval',
-        seconds: secondsUntilNotification,
-      } as any,
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: notificationDate,
+      },
     });
-    
-    console.log(`Scheduled notification ${notificationId} for ${day}/${month}/${year} at ${time}`);
+
+    console.log(
+      `Scheduled notification ${notificationId} for ${day}/${month}/${year} at ${time}`,
+    );
     return notificationId;
   } catch (error) {
-    console.error('Error scheduling notification:', error);
+    console.error("Error scheduling notification:", error);
     return null;
   }
 }
 
 // Cancel a specific notification
-export async function cancelNotification(notificationId: string): Promise<void> {
+export async function cancelNotification(
+  notificationId: string,
+): Promise<void> {
   try {
     const Notifications = await getNotificationsModule();
     if (!Notifications) return;
     await Notifications.cancelScheduledNotificationAsync(notificationId);
     console.log(`Cancelled notification ${notificationId}`);
   } catch (error) {
-    console.error('Error cancelling notification:', error);
+    console.error("Error cancelling notification:", error);
   }
 }
 
@@ -259,9 +334,9 @@ export async function cancelAllNotifications(): Promise<void> {
     const Notifications = await getNotificationsModule();
     if (!Notifications) return;
     await Notifications.cancelAllScheduledNotificationsAsync();
-    console.log('Cancelled all notifications');
+    console.log("Cancelled all notifications");
   } catch (error) {
-    console.error('Error cancelling all notifications:', error);
+    console.error("Error cancelling all notifications:", error);
   }
 }
 
@@ -270,71 +345,83 @@ export async function getAllScheduledNotifications(): Promise<any[]> {
   try {
     const Notifications = await getNotificationsModule();
     if (!Notifications) return [];
-    const notifications = await Notifications.getAllScheduledNotificationsAsync();
+    const notifications =
+      await Notifications.getAllScheduledNotificationsAsync();
     return notifications;
   } catch (error) {
-    console.error('Error getting scheduled notifications:', error);
+    console.error("Error getting scheduled notifications:", error);
     return [];
   }
 }
 
 // Cancel notifications for a specific schedule
-export async function cancelNotificationsForSchedule(scheduleId: string): Promise<void> {
+export async function cancelNotificationsForSchedule(
+  scheduleId: string,
+): Promise<void> {
   try {
     const Notifications = await getNotificationsModule();
     if (!Notifications) return;
-    const allNotifications = await Notifications.getAllScheduledNotificationsAsync();
-    
+    const allNotifications =
+      await Notifications.getAllScheduledNotificationsAsync();
+
     for (const notification of allNotifications) {
       if (notification.content.data?.scheduleId === scheduleId) {
-        await Notifications.cancelScheduledNotificationAsync(notification.identifier);
+        await Notifications.cancelScheduledNotificationAsync(
+          notification.identifier,
+        );
       }
     }
-    
+
     console.log(`Cancelled notifications for schedule ${scheduleId}`);
   } catch (error) {
-    console.error('Error cancelling notifications for schedule:', error);
+    console.error("Error cancelling notifications for schedule:", error);
   }
 }
 
 // Reschedule all notifications for a schedule
 export async function rescheduleNotificationsForDates(
-  dateSchedules: Map<string, { day: number; month: number; year: number; schedules: Array<{ id: string; time: string }> }>,
-  scheduleId: string
+  dateSchedules: Map<
+    string,
+    {
+      day: number;
+      month: number;
+      year: number;
+      schedules: { id: string; time: string }[];
+    }
+  >,
+  scheduleId: string,
 ): Promise<void> {
   try {
     // Cancel existing notifications for this schedule
     await cancelNotificationsForSchedule(scheduleId);
-    
-    // Schedule new notifications
-    const today = new Date();
-    const todayYear = today.getFullYear();
-    const todayMonth = today.getMonth() + 1;
-    const todayDay = today.getDate();
-    
+
+    // Schedule new notifications (calendar days vs Philippines "today", not device TZ)
     for (const [dateKey, dateSchedule] of dateSchedules.entries()) {
-      // Only schedule for today and future dates
-      const scheduleDate = new Date(dateSchedule.year, dateSchedule.month - 1, dateSchedule.day);
-      const todayDate = new Date(todayYear, todayMonth - 1, todayDay);
-      
-      if (scheduleDate >= todayDate) {
-        for (const schedule of dateSchedule.schedules) {
-          if (schedule.time && schedule.time !== 'Not set') {
-            await scheduleIrrigationNotification(
-              scheduleId,
-              dateSchedule.day,
-              dateSchedule.month,
-              dateSchedule.year,
-              schedule.time
-            );
-          }
+      if (
+        philippinesCalendarCompare(
+          dateSchedule.year,
+          dateSchedule.month,
+          dateSchedule.day,
+        ) < 0
+      ) {
+        continue;
+      }
+
+      for (const schedule of dateSchedule.schedules) {
+        if (schedule.time && schedule.time !== "Not set") {
+          await scheduleIrrigationNotification(
+            scheduleId,
+            dateSchedule.day,
+            dateSchedule.month,
+            dateSchedule.year,
+            schedule.time,
+          );
         }
       }
     }
-    
-    console.log('Rescheduled all notifications');
+
+    console.log("Rescheduled all notifications (Philippines / Asia/Manila times)");
   } catch (error) {
-    console.error('Error rescheduling notifications:', error);
+    console.error("Error rescheduling notifications:", error);
   }
 }
-

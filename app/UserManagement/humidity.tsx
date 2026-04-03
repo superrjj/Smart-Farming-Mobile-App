@@ -92,11 +92,24 @@ function GaugeRing({ percent, label }: { percent: number; label: string }) {
   );
 }
 
+function formatPHTime(isoString: string): string {
+  return new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(isoString));
+}
+
 export default function HumidityScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [trendData, setTrendData] = useState<number[]>([]);
   const [currentValue, setCurrentValue] = useState<number | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSensorData();
@@ -104,7 +117,6 @@ export default function HumidityScreen() {
 
   const fetchSensorData = async () => {
     try {
-      // Fetch latest readings for humidity (sensor_id = 2)
       const { data, error } = await supabase
         .from('sensor_reading')
         .select('value, timestamp')
@@ -121,6 +133,7 @@ export default function HumidityScreen() {
         const reversed = [...data].reverse();
         setTrendData(reversed.map(d => d.value));
         setCurrentValue(data[0].value);
+        setLastUpdated(data[0].timestamp);
       }
     } catch (error) {
       console.error('Error fetching humidity data:', error);
@@ -170,6 +183,14 @@ export default function HumidityScreen() {
               <Text style={styles.cardTitle}>Today trend</Text>
               <Text style={styles.cardPill}>Live</Text>
             </View>
+            {lastUpdated && (
+              <View style={styles.lastUpdatedRow}>
+                <FontAwesome name="clock-o" size={11} color={colors.subText} />
+                <Text style={styles.lastUpdatedText}>
+                  Last updated: {formatPHTime(lastUpdated)}
+                </Text>
+              </View>
+            )}
             {trendData.length > 0 ? (
               <LineChart data={trendData} color={colors.primary} />
             ) : (
@@ -264,6 +285,8 @@ const styles = StyleSheet.create({
   metricLabel: { fontFamily: fonts.regular, fontSize: 12, color: colors.subText },
   metricValue: { fontFamily: fonts.bold, fontSize: 18, color: colors.text, marginTop: 2 },
   noDataText: { fontFamily: fonts.regular, fontSize: 14, color: colors.subText, textAlign: 'center', paddingVertical: 20 },
+  lastUpdatedRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  lastUpdatedText: { fontFamily: fonts.regular, fontSize: 11, color: colors.subText },
   areaCard: {
     backgroundColor: colors.card,
     borderRadius: 14,

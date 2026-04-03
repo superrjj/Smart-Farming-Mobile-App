@@ -2,7 +2,7 @@ import { SENDGRID_CONFIG } from './sendgridConfig';
 
 export async function sendPasswordResetCode(email: string, verificationCode: string) {
   if (!SENDGRID_CONFIG.apiKey) {
-    throw new Error('SendGrid API key not configured');
+    throw new Error('SendGrid API key not configured. Set EXPO_PUBLIC_SENDGRID_API_KEY in .env or EAS env');
   }
   if (!SENDGRID_CONFIG.fromEmail?.trim()) {
     throw new Error('SendGrid from email not configured. Set EXPO_PUBLIC_SENDGRID_FROM_EMAIL in .env');

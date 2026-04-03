@@ -8,6 +8,7 @@ import {
   BackHandler,
   Dimensions,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,6 +26,18 @@ import Svg, {
 
 import { clearAllStorage } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
+
+function formatPHTime(isoString: string): string {
+  return new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(isoString));
+}
 
 const colors = {
   brandGreen: "#3E9B4F",
@@ -199,6 +212,24 @@ export default function DashboardScreen() {
   const [soilMoisturePercent, setSoilMoisturePercent] = useState<number>(0);
   const [temperatureValue, setTemperatureValue] = useState<number>(0);
   const [humidityPercent, setHumidityPercent] = useState<number>(0);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<
+    {
+      id: number;
+      type: string;
+      title: string;
+      message: string;
+      is_read: boolean | null;
+      created_at: string | null;
+    }[]
+  >([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [selectedRecommendation, setSelectedRecommendation] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
   const systemActive = true;
   const nextSchedule = "Today, 6:00 PM";
 
@@ -207,35 +238,43 @@ export default function DashboardScreen() {
       try {
         // Fetch latest soil moisture (sensor_id = 3)
         const { data: soilData } = await supabase
-          .from('sensor_reading')
-          .select('value')
-          .eq('sensor_id', 3)
-          .order('timestamp', { ascending: false })
+          .from("sensor_reading")
+          .select("value, timestamp")
+          .eq("sensor_id", 3)
+          .order("timestamp", { ascending: false })
           .limit(1)
           .maybeSingle();
         if (soilData) setSoilMoisturePercent(Math.round(soilData.value));
 
         // Fetch latest temperature (sensor_id = 1)
         const { data: tempData } = await supabase
-          .from('sensor_reading')
-          .select('value')
-          .eq('sensor_id', 1)
-          .order('timestamp', { ascending: false })
+          .from("sensor_reading")
+          .select("value, timestamp")
+          .eq("sensor_id", 1)
+          .order("timestamp", { ascending: false })
           .limit(1)
           .maybeSingle();
         if (tempData) setTemperatureValue(Math.round(tempData.value * 10) / 10);
 
         // Fetch latest humidity (sensor_id = 2)
         const { data: humidData } = await supabase
-          .from('sensor_reading')
-          .select('value')
-          .eq('sensor_id', 2)
-          .order('timestamp', { ascending: false })
+          .from("sensor_reading")
+          .select("value, timestamp")
+          .eq("sensor_id", 2)
+          .order("timestamp", { ascending: false })
           .limit(1)
           .maybeSingle();
         if (humidData) setHumidityPercent(Math.round(humidData.value));
+
+        // Pick the most recent timestamp among all sensors
+        const timestamps = [soilData?.timestamp, tempData?.timestamp, humidData?.timestamp]
+          .filter(Boolean) as string[];
+        if (timestamps.length > 0) {
+          const latest = timestamps.reduce((a, b) => (new Date(a) > new Date(b) ? a : b));
+          setLastUpdated(latest);
+        }
       } catch (error) {
-        console.error('Error fetching sensor data:', error);
+        console.error("Error fetching sensor data:", error);
       }
     };
 
@@ -276,13 +315,14 @@ export default function DashboardScreen() {
       try {
         const { data, error } = await supabase
           .from("user_profiles")
-          .select("name, profile_picture")
+          .select("id, name, profile_picture")
           .eq("email", email)
           .maybeSingle();
 
         if (!error && data) {
           setFullName(data.name || "Farmer");
           setProfilePicture(data.profile_picture);
+          setUserId(data.id);
         }
       } catch (error) {
         console.error("Error fetching profile:", error);
@@ -301,6 +341,101 @@ export default function DashboardScreen() {
       useNativeDriver: true,
     }).start();
   }, [menuOpen, drawerX]);
+
+  const fetchNotifications = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("id, type, title, message, is_read, created_at")
+        .eq("user_id", userId)
+        .eq("type", "recommendation")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (!error && data) {
+        setNotifications(
+          data.map((n) => ({
+            id: n.id as number,
+            type: n.type as string,
+            title: n.title as string,
+            message: n.message as string,
+            is_read: n.is_read as boolean | null,
+            created_at: (n.created_at as string | null) ?? null,
+          })),
+        );
+        setUnreadCount(
+          data.filter((n) => n.is_read === false || n.is_read === null).length,
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+    }
+  }, [userId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return;
+      fetchNotifications();
+    }, [fetchNotifications, userId]),
+  );
+
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`dashboard-notifications-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.new as {
+            id: number;
+            type: string;
+            title: string;
+            message: string;
+            is_read: boolean | null;
+            created_at: string | null;
+          };
+          if (row.type !== "recommendation") return;
+          setNotifications((prev) => [row, ...prev.slice(0, 19)]);
+          setUnreadCount((prev) => prev + 1);
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  const markAllAsRead = useCallback(async () => {
+    if (!userId || notifications.length === 0) return;
+
+    try {
+      const unreadIds = notifications
+        .filter((n) => n.is_read === false || n.is_read === null)
+        .map((n) => n.id);
+      if (unreadIds.length === 0) return;
+
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .in("id", unreadIds)
+        .eq("user_id", userId);
+
+      if (error) throw error;
+
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch (error) {
+      console.error("Error marking notifications as read:", error);
+      Alert.alert("Error", "Failed to mark notifications as read.");
+    }
+  }, [notifications, userId]);
 
   const handleLogout = () => {
     Alert.alert("Log out", "Are you sure you want to log out?", [
@@ -372,7 +507,7 @@ export default function DashboardScreen() {
       });
     } else if (itemKey === "irrigation-history") {
       router.push({
-        pathname: "/UserManagement/irrigationHistory",
+        pathname: "/UserManagement/historyIrrigationLogging",
         params: { email },
       });
     } else if (itemKey === "automated-irrigation") {
@@ -401,7 +536,20 @@ export default function DashboardScreen() {
           <TouchableOpacity onPress={() => setMenuOpen(true)}>
             <FontAwesome name="bars" size={22} color="#000" />
           </TouchableOpacity>
-          <View />
+          {/* Notification Bell */}
+          <TouchableOpacity
+            style={styles.bellButton}
+            onPress={() => setNotifOpen(true)}
+          >
+            <FontAwesome name="bell" size={20} color="#1F2937" />
+            {unreadCount > 0 && (
+              <View style={styles.bellBadgeCount}>
+                <Text style={styles.bellBadgeText}>
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Main dashboard content */}
@@ -425,123 +573,236 @@ export default function DashboardScreen() {
                       .filter((part) => part.length > 0);
                     if (nameParts.length === 0) return "Farmer";
                     if (nameParts.length === 1) return nameParts[0];
-                    // If 2 or more names, show first two names
                     return `${nameParts[0]} ${nameParts[1]}`;
                   })()}
                 </Text>
                 <Text style={styles.systemSubtitle}>
-                  Your string beans irrigation is{" "}
-                  {systemActive ? "running smoothly." : "currently paused."}
+                  Auto-irrigation is monitoring your string beans.
                 </Text>
               </View>
 
               <View style={styles.systemBadge}>
-                <View
-                  style={[
-                    styles.statusIcon,
-                    systemActive && styles.statusIconActive,
-                  ]}
-                >
-                  <FontAwesome name="check" size={18} color="#fff" />
+                <View style={[styles.statusIcon, styles.statusIconActive]}>
+                  <FontAwesome name="refresh" size={16} color="#fff" />
                 </View>
-                <Text style={styles.statusBadgeText}>
-                  {systemActive ? "Active" : "Inactive"}
-                </Text>
+                <Text style={styles.statusBadgeText}>Auto</Text>
               </View>
             </View>
 
-            <View style={styles.scheduleRow}>
-              <View>
-                <Text style={styles.scheduleLabel}>Next scheduled cycle</Text>
-                <Text style={styles.scheduleTime}>{nextSchedule}</Text>
+            {/* Soil-moisture-based irrigation trigger */}
+            <View style={styles.autoIrrigRow}>
+              <View style={styles.autoIrrigLeft}>
+                <FontAwesome name="tint" size={13} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.autoIrrigLabel}>Irrigation trigger</Text>
               </View>
-              <TouchableOpacity style={styles.pauseButton}>
-                <Text style={styles.pauseButtonText}>Pause System</Text>
-              </TouchableOpacity>
+              <View style={[
+                styles.autoIrrigBadge,
+                soilMoisturePercent <= 40
+                  ? styles.autoIrrigBadgeOn
+                  : styles.autoIrrigBadgeOff,
+              ]}>
+                <Text style={styles.autoIrrigBadgeText}>
+                  {soilMoisturePercent <= 25
+                    ? "🔴 Irrigating — Critical"
+                    : soilMoisturePercent <= 40
+                    ? "🟠 Irrigating — Low"
+                    : soilMoisturePercent <= 60
+                    ? "🟡 Standby — Moderate"
+                    : soilMoisturePercent <= 75
+                    ? "🟢 Standby — Ideal"
+                    : "🔵 Standby — Very High"}
+                </Text>
+              </View>
             </View>
           </View>
 
           {/* Field Conditions Card */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Field Conditions</Text>
-            <View style={styles.gaugesRow}>
-              <CircularGauge
-                value={soilMoisturePercent}
-                maxValue={100}
-                gradientColors={["#60A5FA", "#3B82F6"]}
-                label="Soil Moisture"
-                subLabel={soilMoisturePercent >= 60 && soilMoisturePercent <= 80 ? 'Optimal' : soilMoisturePercent < 60 ? 'Low' : 'High'}
-                icon={
-                  <FontAwesome
-                    name="tint"
-                    size={14}
-                    color="#3B82F6"
-                    style={{ marginBottom: 2 }}
-                  />
-                }
-              />
-              <CircularGauge
-                value={temperatureValue}
-                maxValue={50}
-                gradientColors={["#FBBF24", "#F97316"]}
-                label="Temperature"
-                subLabel={temperatureValue >= 24 && temperatureValue <= 30 ? 'Mild' : temperatureValue < 24 ? 'Cool' : 'Hot'}
-                unit="°C"
-                icon={
-                  <FontAwesome
-                    name="thermometer"
-                    size={14}
-                    color="#F97316"
-                    style={{ marginBottom: 2 }}
-                  />
-                }
-              />
-              <CircularGauge
-                value={humidityPercent}
-                maxValue={100}
-                gradientColors={["#C084FC", "#A855F7"]}
-                label="Humidity"
-                subLabel={humidityPercent >= 40 && humidityPercent <= 70 ? 'Comfortable' : humidityPercent < 40 ? 'Dry' : 'Humid'}
-                icon={
-                  <FontAwesome
-                    name="cloud"
-                    size={14}
-                    color="#A855F7"
-                    style={{ marginBottom: 2 }}
-                  />
-                }
-              />
-            </View>
+            {lastUpdated && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: -6, marginBottom: 8 }}>
+                <FontAwesome name="clock-o" size={11} color={colors.brandGrayText} />
+                <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.brandGrayText }}>
+                  Last updated: {formatPHTime(lastUpdated)}
+                </Text>
+              </View>
+            )}
+
+            {/* Soil Moisture */}
+            {(() => {
+              const s = soilMoisturePercent;
+              const { dot, label, barColor } =
+                s <= 25 ? { dot: "🔴", label: "Very Low — Critical", barColor: "#EF4444" }
+                : s <= 40 ? { dot: "🟠", label: "Low — Warning",     barColor: "#F97316" }
+                : s <= 60 ? { dot: "🟡", label: "Moderate — Normal", barColor: "#EAB308" }
+                : s <= 75 ? { dot: "🟢", label: "Ideal — Good",      barColor: "#22C55E" }
+                :           { dot: "🔵", label: "Very High — Risk",  barColor: "#3B82F6" };
+              return (
+                <View style={styles.sensorRow}>
+                  <View style={styles.sensorRowHeader}>
+                    <View style={styles.sensorRowLeft}>
+                      <FontAwesome name="leaf" size={14} color="#22C55E" />
+                      <Text style={styles.sensorRowTitle}>Soil Moisture</Text>
+                    </View>
+                    <Text style={styles.sensorRowValue}>{s}%</Text>
+                  </View>
+                  <View style={styles.severityBar}>
+                    <View style={[styles.severityFill, { width: `${Math.min(s, 100)}%` as any, backgroundColor: barColor }]} />
+                  </View>
+                  <Text style={styles.severityLabel}>{dot} {label}</Text>
+                </View>
+              );
+            })()}
+
+            {/* Temperature */}
+            {(() => {
+              const t = temperatureValue;
+              const { dot, label, barColor } =
+                t < 15 ? { dot: "🔵", label: "Very Low — Critical",   barColor: "#3B82F6" }
+                : t < 21 ? { dot: "🟢", label: "Low — Slight Stress",  barColor: "#22C55E" }
+                : t <= 30 ? { dot: "🟡", label: "Ideal — Good",         barColor: "#EAB308" }
+                : t <= 35 ? { dot: "🟠", label: "High — Warning",       barColor: "#F97316" }
+                :           { dot: "🔴", label: "Very High — Critical", barColor: "#EF4444" };
+              const pct = Math.min(Math.max(((t - 10) / 30) * 100, 2), 100);
+              return (
+                <View style={styles.sensorRow}>
+                  <View style={styles.sensorRowHeader}>
+                    <View style={styles.sensorRowLeft}>
+                      <FontAwesome name="thermometer" size={14} color="#F97316" />
+                      <Text style={styles.sensorRowTitle}>Temperature</Text>
+                    </View>
+                    <Text style={styles.sensorRowValue}>{t.toFixed(1)}°C</Text>
+                  </View>
+                  <View style={styles.severityBar}>
+                    <View style={[styles.severityFill, { width: `${pct}%` as any, backgroundColor: barColor }]} />
+                  </View>
+                  <Text style={styles.severityLabel}>{dot} {label}</Text>
+                </View>
+              );
+            })()}
+
+            {/* Humidity */}
+            {(() => {
+              const h = humidityPercent;
+              const { dot, label, barColor } =
+                h < 40 ? { dot: "🔴", label: "Very Low — Critical",  barColor: "#EF4444" }
+                : h <= 55 ? { dot: "🟠", label: "Low — Warning",       barColor: "#F97316" }
+                : h <= 70 ? { dot: "🟡", label: "Moderate — Normal",   barColor: "#EAB308" }
+                : h <= 80 ? { dot: "🟢", label: "Ideal — Good",        barColor: "#22C55E" }
+                :           { dot: "🔵", label: "Very High — Risk",    barColor: "#3B82F6" };
+              return (
+                <View style={styles.sensorRow}>
+                  <View style={styles.sensorRowHeader}>
+                    <View style={styles.sensorRowLeft}>
+                      <FontAwesome name="tint" size={14} color="#A855F7" />
+                      <Text style={styles.sensorRowTitle}>Humidity</Text>
+                    </View>
+                    <Text style={styles.sensorRowValue}>{h}%</Text>
+                  </View>
+                  <View style={styles.severityBar}>
+                    <View style={[styles.severityFill, { width: `${Math.min(h, 100)}%` as any, backgroundColor: barColor }]} />
+                  </View>
+                  <Text style={styles.severityLabel}>{dot} {label}</Text>
+                </View>
+              );
+            })()}
           </View>
 
           {/* Irrigation Controls Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Irrigation Controls</Text>
-            <View style={styles.controlsRow}>
-              <TouchableOpacity style={styles.controlButton}>
-                <View style={styles.controlIconCircle}>
-                  <FontAwesome name="tint" size={20} color="#6B7280" />
+        </ScrollView>
+
+        {/* Recommendation Notification Panel */}
+        <Modal
+          visible={notifOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setNotifOpen(false)}
+        >
+          <View style={styles.notifBackdrop}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => setNotifOpen(false)}
+            />
+            <View style={styles.notifPanel}>
+              <View style={styles.notifHeader}>
+                <Text style={styles.notifTitle}>Recommendations</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  {unreadCount > 0 && (
+                    <TouchableOpacity onPress={markAllAsRead}>
+                      <Text style={styles.markAllReadText}>Mark all as read</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity onPress={() => setNotifOpen(false)}>
+                    <FontAwesome name="times" size={16} color="#6B7280" />
+                  </TouchableOpacity>
                 </View>
-                <Text style={styles.controlLabel}>Manual</Text>
-                <Text style={styles.controlLabel}>Water</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.controlButton}>
-                <View style={styles.controlIconCircle}>
-                  <FontAwesome name="cloud" size={20} color="#6B7280" />
-                </View>
-                <Text style={styles.controlLabel}>Rain Delay</Text>
-                <Text style={styles.controlLabel}>(24h)</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.controlButton}>
-                <View style={styles.controlIconCircle}>
-                  <FontAwesome name="th-large" size={20} color="#6B7280" />
-                </View>
-                <Text style={styles.controlLabel}>View All</Text>
-                <Text style={styles.controlLabel}>Zones</Text>
+              </View>
+
+              {notifications.length === 0 ? (
+                <Text style={styles.notifEmptyText}>
+                  No recommendations yet.
+                </Text>
+              ) : (
+                notifications.map((n) => (
+                  <TouchableOpacity
+                    key={n.id}
+                    activeOpacity={0.8}
+                    onPress={() =>
+                      setSelectedRecommendation({
+                        title: n.title,
+                        message: n.message,
+                      })
+                    }
+                    style={[
+                      styles.notifItem,
+                      n.is_read ? styles.notifRead : styles.notifUnread,
+                    ]}
+                  >
+                    <FontAwesome
+                      name="leaf"
+                      size={14}
+                      color={n.is_read ? "#6B7280" : colors.brandGreen}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.notifTitleText}>{n.title}</Text>
+                      <Text style={styles.notifText}>{n.message}</Text>
+                      {n.created_at && (
+                        <Text style={styles.notifTimeText}>
+                          {formatPHTime(n.created_at)}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          </View>
+        </Modal>
+
+        {/* Recommendation detail popup (on click) */}
+        <Modal
+          visible={!!selectedRecommendation}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSelectedRecommendation(null)}
+        >
+          <View style={styles.popupBackdrop}>
+            <View style={styles.popupCard}>
+              <Text style={styles.popupTitle}>
+                {selectedRecommendation?.title ?? "Recommendation"}
+              </Text>
+              <Text style={styles.popupMessage}>
+                {selectedRecommendation?.message ?? ""}
+              </Text>
+              <TouchableOpacity
+                style={styles.popupOkButton}
+                onPress={() => setSelectedRecommendation(null)}
+              >
+                <Text style={styles.popupOkButtonText}>OK</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </ScrollView>
+        </Modal>
 
         {/* Backdrop for drawer */}
         {menuOpen && (
@@ -725,9 +986,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: "#fff",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.brandGrayBorder,
+    backgroundColor: "#F3F4F6",
   },
   scroll: {
     flex: 1,
@@ -1065,5 +1324,233 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 16,
     color: "#fff",
+  },
+  // Auto-irrigation trigger row (system status card)
+  autoIrrigRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 10,
+    backgroundColor: "rgba(0,0,0,0.12)",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  autoIrrigLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  autoIrrigLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.9)",
+  },
+  autoIrrigBadge: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  autoIrrigBadgeOn: {
+    backgroundColor: "rgba(239,68,68,0.25)",
+  },
+  autoIrrigBadgeOff: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  autoIrrigBadgeText: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: "#ffffff",
+  },
+  // Sensor severity rows (field conditions card)
+  sensorRow: {
+    gap: 6,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E5E7EB",
+  },
+  sensorRowHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  sensorRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  sensorRowTitle: {
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: "#1F2937",
+  },
+  sensorRowValue: {
+    fontFamily: fonts.bold,
+    fontSize: 16,
+    color: "#1F2937",
+  },
+  severityBar: {
+    height: 6,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  severityFill: {
+    height: 6,
+    borderRadius: 3,
+  },
+  severityLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: colors.brandGrayText,
+  },
+  // Notification bell
+  bellButton: {
+    padding: 6,
+    position: "relative",
+  },
+  bellBadgeCount: {
+    position: "absolute",
+    top: -2,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
+  },
+  bellBadgeText: {
+    color: "#fff",
+    fontFamily: fonts.bold,
+    fontSize: 9,
+  },
+  // Recommendation panel
+  notifBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    paddingTop: 60,
+    paddingRight: 12,
+  },
+  notifPanel: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    width: 300,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+    gap: 10,
+  },
+  notifHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  notifTitle: {
+    fontFamily: fonts.semibold,
+    fontSize: 15,
+    color: "#1F2937",
+  },
+  markAllReadText: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: colors.brandBlue,
+  },
+  notifItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    borderRadius: 10,
+    padding: 10,
+  },
+  notifCritical: {
+    backgroundColor: "#FEF2F2",
+  },
+  notifWarning: {
+    backgroundColor: "#FFF7ED",
+  },
+  notifInfo: {
+    backgroundColor: "#EFF6FF",
+  },
+  notifGood: {
+    backgroundColor: "#F0FDF4",
+  },
+  notifRead: {
+    backgroundColor: "#F9FAFB",
+  },
+  notifUnread: {
+    backgroundColor: "#ECFEFF",
+  },
+  notifText: {
+    flex: 1,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: "#374151",
+    lineHeight: 18,
+  },
+  notifTitleText: {
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    color: "#111827",
+    marginBottom: 2,
+  },
+  notifTimeText: {
+    marginTop: 2,
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: colors.brandGrayText,
+  },
+  notifEmptyText: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.brandGrayText,
+  },
+  popupBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  popupCard: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+  },
+  popupTitle: {
+    fontFamily: fonts.semibold,
+    fontSize: 16,
+    color: "#111827",
+    marginBottom: 8,
+  },
+  popupMessage: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    color: "#374151",
+    lineHeight: 20,
+  },
+  popupOkButton: {
+    marginTop: 16,
+    alignSelf: "flex-end",
+    backgroundColor: colors.brandBlue,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  popupOkButtonText: {
+    fontFamily: fonts.medium,
+    color: "#fff",
+    fontSize: 13,
   },
 });

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { sendPasswordResetEmail } from '../../lib/sendgrid';
+import { sendPasswordResetCode } from '../../lib/sendgrid';
 
 export default function ResetPasswordScreen() {
   const [email, setEmail] = useState('');
@@ -17,13 +17,13 @@ export default function ResetPasswordScreen() {
     setLoading(true);
     try {
       const resetToken = Math.random().toString(36).substring(2, 15);
-      await sendPasswordResetEmail(email, resetToken);
+      await sendPasswordResetCode(email, resetToken);
       Alert.alert(
         'Success',
-        'Password reset link has been sent to your email',
+        'Password reset code has been sent to your email',
         [{ text: 'OK', onPress: () => router.back() }]
       );
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to send password reset email');
     } finally {
       setLoading(false);

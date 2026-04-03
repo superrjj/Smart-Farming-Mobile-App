@@ -1,8 +1,9 @@
 import {
+  philippinesCalendarCompare,
   requestNotificationPermissions,
   rescheduleNotificationsForDates,
   setNotificationReceivedHandler,
-  setNotificationResponseHandler
+  setNotificationResponseHandler,
 } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
@@ -25,12 +26,18 @@ const colors = {
   primaryLight: "#BBF7D0",
   primaryDark: "#16A34A",
   brandBlue: "#3B82F6",
+  brandBlueLight: "#DBEAFE",
   accent: "#0EA5E9",
   grayText: "#94A3B8",
   grayBorder: "#E2E8F0",
   grayLight: "#F8FAFC",
   dark: "#0F172A",
   white: "#FFFFFF",
+  warning: "#F59E0B",
+  warningLight: "#FEF3C7",
+  humidityLight: "#DCFCE7",
+  purple: "#7C3AED",
+  purpleLight: "#EDE9FE",
 };
 
 const fonts = {
@@ -64,24 +71,165 @@ function getFirstDayOfMonth(month: number, year: number) {
   return new Date(year, month, 1).getDay();
 }
 
+/** YYYY-MM-DD from calendar fields — never use Date#toISOString() for `scheduled_date` (UTC shifts the day). */
+function toScheduledDateString(
+  year: number,
+  month1Based: number,
+  day: number,
+): string {
+  return `${year}-${String(month1Based).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 interface ScheduleDate {
   id: string;
   day: number;
   month: number;
   year: number;
   time: string;
-  times?: string[]; // For backward compatibility and multiple times support
+  times?: string[];
 }
 
 interface DateSchedule {
   day: number;
   month: number;
   year: number;
-  schedules: {
-    id: string;
-    time: string;
-  }[];
+  schedules: { id: string; time: string }[];
 }
+
+// ─── Sensor Progress Card ─────────────────────────────────────────────────────
+
+const SensorCard = ({
+  label,
+  value,
+  max,
+  unit,
+  trackColor,
+  fillColor,
+  icon,
+  iconColor,
+  iconBg,
+  alert,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  unit: string;
+  trackColor: string;
+  fillColor: string;
+  icon: string;
+  iconColor: string;
+  iconBg: string;
+  alert?: boolean;
+}) => {
+  const percent = Math.min(value / max, 1);
+
+  return (
+    <View style={sensorStyles.card}>
+      <View style={sensorStyles.row}>
+        <View style={[sensorStyles.iconWrap, { backgroundColor: iconBg }]}>
+          <FontAwesome name={icon as any} size={16} color={iconColor} />
+        </View>
+        <Text style={sensorStyles.label}>{label}</Text>
+        <Text style={[sensorStyles.value, { color: iconColor }]}>
+          {value}
+          {unit}
+        </Text>
+        {alert && <View style={sensorStyles.alertDot} />}
+      </View>
+      <View style={[sensorStyles.track, { backgroundColor: trackColor }]}>
+        <View
+          style={[
+            sensorStyles.fill,
+            { width: `${percent * 100}%` as any, backgroundColor: fillColor },
+          ]}
+        />
+        <View
+          style={[
+            sensorStyles.thumb,
+            {
+              left: `${percent * 100}%` as any,
+              backgroundColor: fillColor,
+            },
+          ]}
+        />
+      </View>
+    </View>
+  );
+};
+
+const sensorStyles = StyleSheet.create({
+  card: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.grayBorder,
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  iconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  label: {
+    flex: 1,
+    fontFamily: fonts.semibold,
+    fontSize: 15,
+    color: colors.dark,
+  },
+  value: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+  },
+  alertDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#EF4444",
+  },
+  track: {
+    height: 8,
+    borderRadius: 4,
+    position: "relative",
+    justifyContent: "center",
+  },
+  fill: {
+    height: 8,
+    borderRadius: 4,
+    position: "absolute",
+    left: 0,
+    top: 0,
+  },
+  thumb: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    position: "absolute",
+    top: -3,
+    marginLeft: -7,
+    borderWidth: 2,
+    borderColor: colors.white,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+});
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function IrrigationScheduleScreen() {
   const params = useLocalSearchParams<{ email?: string }>();
@@ -128,6 +276,42 @@ export default function IrrigationScheduleScreen() {
     scheduleId: string;
   } | null>(null);
 
+  const [soilMoisture, setSoilMoisture] = useState(0);
+  const [temperature, setTemperature] = useState(0);
+  const [humidity, setHumidity] = useState(0);
+
+  const fetchLatestSensorData = async () => {
+    try {
+      const sensorIds = [1, 2, 3];
+      const results = await Promise.all(
+        sensorIds.map((id) =>
+          supabase
+            .from("sensor_reading")
+            .select("sensor_id, value, unit")
+            .eq("sensor_id", id)
+            .order("timestamp", { ascending: false })
+            .limit(1)
+            .single(),
+        ),
+      );
+
+      results.forEach(({ data, error }) => {
+        if (error || !data) return;
+        if (data.sensor_id === 1) setTemperature(data.value);
+        else if (data.sensor_id === 2) setHumidity(data.value);
+        else if (data.sensor_id === 3) setSoilMoisture(data.value);
+      });
+    } catch (error) {
+      console.error("Error fetching sensor data:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchLatestSensorData();
+    const interval = setInterval(fetchLatestSensorData, 30000); // refresh every 30s
+    return () => clearInterval(interval);
+  }, []);
+
   const hours = Array.from({ length: 12 }, (_, i) =>
     String(i + 1).padStart(2, "0"),
   );
@@ -139,41 +323,23 @@ export default function IrrigationScheduleScreen() {
   const firstDay = getFirstDayOfMonth(currentMonth, currentYear);
 
   const calendarDays: (number | null)[] = [];
-  for (let i = 0; i < firstDay; i++) {
-    calendarDays.push(null);
-  }
-  for (let i = 1; i <= daysInMonth; i++) {
-    calendarDays.push(i);
-  }
+  for (let i = 0; i < firstDay; i++) calendarDays.push(null);
+  for (let i = 1; i <= daysInMonth; i++) calendarDays.push(i);
 
-  // Request notification permissions on mount
   useEffect(() => {
     requestNotificationPermissions();
-
-    // Set up notification response handler
     setNotificationResponseHandler((response) => {
       const data = response.notification.request.content.data as any;
-      if (
-        data &&
-        data.scheduleId &&
-        typeof data.day === "number" &&
-        typeof data.month === "number" &&
-        typeof data.year === "number" &&
-        typeof data.time === "string" &&
-        typeof data.scheduleId === "string"
-      ) {
-        // Navigate to current month if needed
+      if (data?.scheduleId && typeof data.day === "number") {
         const notificationDate = new Date(data.year, data.month - 1, data.day);
-        const today = new Date();
+        const todayDate = new Date();
         if (
-          notificationDate.getMonth() !== today.getMonth() ||
-          notificationDate.getFullYear() !== today.getFullYear()
+          notificationDate.getMonth() !== todayDate.getMonth() ||
+          notificationDate.getFullYear() !== todayDate.getFullYear()
         ) {
           setCurrentMonth(notificationDate.getMonth());
           setCurrentYear(notificationDate.getFullYear());
         }
-
-        // Show alarm modal
         setAlarmScheduleData({
           day: data.day,
           month: data.month,
@@ -184,20 +350,9 @@ export default function IrrigationScheduleScreen() {
         setAlarmModalVisible(true);
       }
     });
-
-    // Listen for notifications received while app is in foreground
     setNotificationReceivedHandler((notification) => {
       const data = notification.request.content.data as any;
-      if (
-        data &&
-        data.scheduleId &&
-        typeof data.day === "number" &&
-        typeof data.month === "number" &&
-        typeof data.year === "number" &&
-        typeof data.time === "string" &&
-        typeof data.scheduleId === "string"
-      ) {
-        // Show alarm modal immediately
+      if (data?.scheduleId && typeof data.day === "number") {
         setAlarmScheduleData({
           day: data.day,
           month: data.month,
@@ -210,37 +365,25 @@ export default function IrrigationScheduleScreen() {
     });
   }, []);
 
-  // Fetch user session
   useEffect(() => {
     fetchUserSession();
   }, [email]);
 
-  // Fetch schedules when user is loaded (initial load only)
   useEffect(() => {
-    if (userId && !currentScheduleId) {
-      fetchOrCreateSchedule();
-    }
+    if (userId && !currentScheduleId) fetchOrCreateSchedule();
   }, [userId]);
 
-  // Fetch dates when month/year changes (without loading state)
   useEffect(() => {
-    if (currentScheduleId && userId) {
-      fetchScheduledDates(currentScheduleId);
-    }
+    if (currentScheduleId && userId) fetchScheduledDates(currentScheduleId);
   }, [currentMonth, currentYear, currentScheduleId]);
 
-  // Update today's scheduled times and next schedule whenever dateSchedules changes
   useEffect(() => {
-    // Use a small delay to ensure state is fully updated
     const timeoutId = setTimeout(() => {
       updateTodayStats();
     }, 50);
-
-    // Update every minute to show next schedule
     const interval = setInterval(() => {
       updateTodayStats();
-    }, 60000); // Update every minute
-
+    }, 60000);
     return () => {
       clearTimeout(timeoutId);
       clearInterval(interval);
@@ -253,25 +396,19 @@ export default function IrrigationScheduleScreen() {
       setLoading(false);
       return;
     }
-
     try {
       const { data: userData, error } = await supabase
         .from("user_profiles")
         .select("id")
         .eq("email", email)
         .single();
-
       if (error || !userData) {
-        console.error("Error fetching user:", error);
         Alert.alert("Error", "User not found");
         setLoading(false);
         return;
       }
-
       setUserId(userData.id);
-      console.log("Loaded user ID:", userData.id);
-    } catch (error) {
-      console.error("Error fetching user session:", error);
+    } catch {
       Alert.alert("Error", "Failed to load user session");
       setLoading(false);
     }
@@ -279,7 +416,6 @@ export default function IrrigationScheduleScreen() {
 
   const fetchOrCreateSchedule = async () => {
     if (!userId) return;
-
     setLoading(true);
     try {
       const { data: existingSchedule, error: scheduleError } = await supabase
@@ -288,13 +424,9 @@ export default function IrrigationScheduleScreen() {
         .eq("user_id", userId)
         .eq("is_active", true)
         .maybeSingle();
-
-      if (scheduleError && scheduleError.code !== "PGRST116") {
+      if (scheduleError && scheduleError.code !== "PGRST116")
         throw scheduleError;
-      }
-
       let scheduleId = existingSchedule?.id;
-
       if (!existingSchedule) {
         const { data: newSchedule, error: createError } = await supabase
           .from("irrigation_schedules")
@@ -305,17 +437,13 @@ export default function IrrigationScheduleScreen() {
           })
           .select()
           .single();
-
         if (createError) throw createError;
         scheduleId = newSchedule.id;
-        console.log("Created new schedule:", scheduleId);
       }
-
       setCurrentScheduleId(scheduleId);
       await fetchTimeSchedules(scheduleId);
       await fetchScheduledDates(scheduleId, true);
-    } catch (error) {
-      console.error("Error fetching schedule:", error);
+    } catch {
       Alert.alert("Error", "Failed to load irrigation schedule");
     } finally {
       setLoading(false);
@@ -329,31 +457,64 @@ export default function IrrigationScheduleScreen() {
         .select("*")
         .eq("schedule_id", scheduleId)
         .order("time");
-
       if (error) throw error;
-
-      console.log("Fetched time schedules:", data);
       setSchedules(data || []);
     } catch (error) {
       console.error("Error fetching time schedules:", error);
     }
   };
 
+  /** Reschedule local notifications from all future irrigation rows (not just the visible month). */
+  const syncIrrigationNotifications = async (scheduleId: string) => {
+    try {
+      const granted = await requestNotificationPermissions();
+      if (!granted) {
+        console.warn(
+          "[irrigationSchedule] Notification permission not granted; reminders not scheduled.",
+        );
+        return;
+      }
+      const { data, error } = await supabase
+        .from("irrigation_scheduled_dates")
+        .select("id, day, month, year, time")
+        .eq("schedule_id", scheduleId);
+      if (error) {
+        console.error("syncIrrigationNotifications:", error);
+        return;
+      }
+      const map = new Map<string, DateSchedule>();
+      for (const d of data || []) {
+        const time = d.time || "";
+        if (!time || time === "Not set") continue;
+        if (philippinesCalendarCompare(d.year, d.month, d.day) < 0) continue;
+        const dateKey = `${d.year}-${d.month}-${d.day}`;
+        if (!map.has(dateKey)) {
+          map.set(dateKey, {
+            day: d.day,
+            month: d.month,
+            year: d.year,
+            schedules: [],
+          });
+        }
+        map.get(dateKey)!.schedules.push({ id: d.id, time });
+      }
+      await rescheduleNotificationsForDates(map, scheduleId);
+    } catch (e) {
+      console.error("syncIrrigationNotifications:", e);
+    }
+  };
+
   const fetchScheduledDates = async (
     scheduleId: string,
-    showLoading: boolean = false,
+    showLoading = false,
   ) => {
     try {
-      if (showLoading) {
-        setLoading(true);
-      }
+      if (showLoading) setLoading(true);
+      const todayDate = new Date();
+      const todayMonth = todayDate.getMonth() + 1;
+      const todayYear = todayDate.getFullYear();
+      const todayDay = todayDate.getDate();
 
-      const today = new Date();
-      const todayMonth = today.getMonth() + 1;
-      const todayYear = today.getFullYear();
-      const todayDay = today.getDate();
-
-      // Fetch schedules for current month being viewed
       const { data, error } = await supabase
         .from("irrigation_scheduled_dates")
         .select("id, day, month, year, time")
@@ -363,188 +524,59 @@ export default function IrrigationScheduleScreen() {
         .order("day, time");
 
       if (error) {
-        // If time column doesn't exist, try without it
         if (error.code === "42703" && error.message.includes("time")) {
-          console.log("Time column not found, fetching without time column");
-          const { data: dataWithoutTime, error: errorWithoutTime } =
-            await supabase
-              .from("irrigation_scheduled_dates")
-              .select("id, day, month, year")
-              .eq("schedule_id", scheduleId)
-              .eq("month", currentMonth + 1)
-              .eq("year", currentYear)
-              .order("day");
-
-          if (errorWithoutTime) throw errorWithoutTime;
-
-          // Group schedules by date (without time for now)
+          const { data: d2, error: e2 } = await supabase
+            .from("irrigation_scheduled_dates")
+            .select("id, day, month, year")
+            .eq("schedule_id", scheduleId)
+            .eq("month", currentMonth + 1)
+            .eq("year", currentYear)
+            .order("day");
+          if (e2) throw e2;
           const schedulesMap = new Map<string, DateSchedule>();
-
-          (dataWithoutTime || []).forEach((d) => {
+          (d2 || []).forEach((d) => {
             const dateKey = `${d.year}-${d.month}-${d.day}`;
-
-            if (!schedulesMap.has(dateKey)) {
+            if (!schedulesMap.has(dateKey))
               schedulesMap.set(dateKey, {
                 day: d.day,
                 month: d.month,
                 year: d.year,
-                schedules: [
-                  {
-                    id: d.id,
-                    time: "Not set",
-                  },
-                ],
+                schedules: [],
               });
-            } else {
-              const dateSchedule = schedulesMap.get(dateKey)!;
-              dateSchedule.schedules.push({
-                id: d.id,
-                time: "Not set",
-              });
-            }
+            schedulesMap
+              .get(dateKey)!
+              .schedules.push({ id: d.id, time: "Not set" });
           });
-
-          const formattedDates: ScheduleDate[] = (dataWithoutTime || []).map(
-            (d) => ({
+          setScheduledDates(
+            (d2 || []).map((d) => ({
               id: d.id,
               day: d.day,
               month: d.month,
               year: d.year,
               time: "Not set",
-            }),
+            })),
           );
-
-          // Also fetch today's schedules if today is not in the current month view
-          const today = new Date();
-          const todayMonth = today.getMonth() + 1;
-          const todayYear = today.getFullYear();
-          const todayDay = today.getDate();
-
-          if (todayMonth !== currentMonth + 1 || todayYear !== currentYear) {
-            const { data: todayDataWithoutTime, error: todayErrorWithoutTime } =
-              await supabase
-                .from("irrigation_scheduled_dates")
-                .select("id, day, month, year")
-                .eq("schedule_id", scheduleId)
-                .eq("month", todayMonth)
-                .eq("year", todayYear)
-                .eq("day", todayDay)
-                .order("day");
-
-            if (
-              !todayErrorWithoutTime &&
-              todayDataWithoutTime &&
-              todayDataWithoutTime.length > 0
-            ) {
-              const todayDateKey = `${todayYear}-${todayMonth}-${todayDay}`;
-
-              if (!schedulesMap.has(todayDateKey)) {
-                schedulesMap.set(todayDateKey, {
-                  day: todayDay,
-                  month: todayMonth,
-                  year: todayYear,
-                  schedules: [],
-                });
-              }
-
-              const todaySchedule = schedulesMap.get(todayDateKey)!;
-              todayDataWithoutTime.forEach((d) => {
-                todaySchedule.schedules.push({
-                  id: d.id,
-                  time: "Not set",
-                });
-              });
-
-              todayDataWithoutTime.forEach((d) => {
-                formattedDates.push({
-                  id: d.id,
-                  day: d.day,
-                  month: d.month,
-                  year: d.year,
-                  time: "Not set",
-                });
-              });
-            }
-          }
-
-          // Also fetch today's schedules (same logic as above)
-          const { data: todayDataWithoutTime, error: todayErrorWithoutTime } =
-            await supabase
-              .from("irrigation_scheduled_dates")
-              .select("id, day, month, year")
-              .eq("schedule_id", scheduleId)
-              .eq("month", todayMonth)
-              .eq("year", todayYear)
-              .eq("day", todayDay)
-              .order("day");
-
-          if (
-            !todayErrorWithoutTime &&
-            todayDataWithoutTime &&
-            todayDataWithoutTime.length > 0
-          ) {
-            const todayDateKey = `${todayYear}-${todayMonth}-${todayDay}`;
-
-            if (!schedulesMap.has(todayDateKey)) {
-              schedulesMap.set(todayDateKey, {
-                day: todayDay,
-                month: todayMonth,
-                year: todayYear,
-                schedules: [],
-              });
-            }
-
-            const todaySchedule = schedulesMap.get(todayDateKey)!;
-            todaySchedule.schedules = [];
-            todayDataWithoutTime.forEach((d) => {
-              todaySchedule.schedules.push({
-                id: d.id,
-                time: "Not set",
-              });
-            });
-          } else if (!todayErrorWithoutTime) {
-            const todayDateKey = `${todayYear}-${todayMonth}-${todayDay}`;
-            if (schedulesMap.has(todayDateKey)) {
-              schedulesMap.delete(todayDateKey);
-            }
-          }
-
-          // Create a new Map to ensure React detects the change
-          const newSchedulesMap = new Map(schedulesMap);
-
-          setScheduledDates(formattedDates);
-          setDateSchedules(newSchedulesMap);
-
-          // Stats will auto-update via useEffect when dateSchedules changes
+          setDateSchedules(new Map(schedulesMap));
+          await syncIrrigationNotifications(scheduleId);
           return;
         }
         throw error;
       }
 
-      // Group schedules by date
       const schedulesMap = new Map<string, DateSchedule>();
-
       (data || []).forEach((d) => {
         const dateKey = `${d.year}-${d.month}-${d.day}`;
         const time = d.time || "Not set";
-
-        if (!schedulesMap.has(dateKey)) {
+        if (!schedulesMap.has(dateKey))
           schedulesMap.set(dateKey, {
             day: d.day,
             month: d.month,
             year: d.year,
             schedules: [],
           });
-        }
-
-        const dateSchedule = schedulesMap.get(dateKey)!;
-        dateSchedule.schedules.push({
-          id: d.id,
-          time: time,
-        });
+        schedulesMap.get(dateKey)!.schedules.push({ id: d.id, time });
       });
 
-      // Also maintain backward compatibility with scheduledDates
       const formattedDates: ScheduleDate[] = (data || []).map((d) => ({
         id: d.id,
         day: d.day,
@@ -553,11 +585,6 @@ export default function IrrigationScheduleScreen() {
         time: d.time || "Not set",
       }));
 
-      console.log("Fetched scheduled dates:", formattedDates);
-      console.log("Grouped schedules:", schedulesMap);
-
-      // ALWAYS fetch today's schedules to keep stats updated (even if viewing different month)
-      // This ensures "Scheduled times today" and "Next schedule" are always accurate
       const { data: todayData, error: todayError } = await supabase
         .from("irrigation_scheduled_dates")
         .select("id, day, month, year, time")
@@ -569,29 +596,17 @@ export default function IrrigationScheduleScreen() {
 
       if (!todayError && todayData && todayData.length > 0) {
         const todayDateKey = `${todayYear}-${todayMonth}-${todayDay}`;
-
-        // Only add if not already in the map (in case today is in current month view)
-        if (!schedulesMap.has(todayDateKey)) {
+        if (!schedulesMap.has(todayDateKey))
           schedulesMap.set(todayDateKey, {
             day: todayDay,
             month: todayMonth,
             year: todayYear,
             schedules: [],
           });
-        }
-
         const todaySchedule = schedulesMap.get(todayDateKey)!;
-        // Clear existing schedules for today and replace with fresh data
         todaySchedule.schedules = [];
         todayData.forEach((d) => {
-          todaySchedule.schedules.push({
-            id: d.id,
-            time: d.time || "Not set",
-          });
-        });
-
-        // Also add to formattedDates for backward compatibility (avoid duplicates)
-        todayData.forEach((d) => {
+          todaySchedule.schedules.push({ id: d.id, time: d.time || "Not set" });
           if (!formattedDates.find((fd) => fd.id === d.id)) {
             formattedDates.push({
               id: d.id,
@@ -603,31 +618,18 @@ export default function IrrigationScheduleScreen() {
           }
         });
       } else if (!todayError) {
-        // If today has no schedules, make sure it's removed from map if it exists
         const todayDateKey = `${todayYear}-${todayMonth}-${todayDay}`;
-        if (schedulesMap.has(todayDateKey)) {
-          schedulesMap.delete(todayDateKey);
-        }
+        if (schedulesMap.has(todayDateKey)) schedulesMap.delete(todayDateKey);
       }
 
-      // Create a new Map to ensure React detects the change
       const newSchedulesMap = new Map(schedulesMap);
-
       setScheduledDates(formattedDates);
       setDateSchedules(newSchedulesMap);
-
-      // Schedule notifications for all fetched schedules
-      if (scheduleId) {
-        rescheduleNotificationsForDates(newSchedulesMap, scheduleId);
-      }
-
-      // Stats will auto-update via useEffect when dateSchedules changes
+      if (scheduleId) await syncIrrigationNotifications(scheduleId);
     } catch (error) {
       console.error("Error fetching scheduled dates:", error);
     } finally {
-      if (showLoading) {
-        setLoading(false);
-      }
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -637,49 +639,40 @@ export default function IrrigationScheduleScreen() {
       currentMonth === 0
         ? new Date(currentYear - 1, 11)
         : new Date(currentYear, currentMonth - 1);
-    const todayMonth = new Date(
-      currentDate.getFullYear(),
-      currentDate.getMonth(),
+    return (
+      prevMonthDate >=
+      new Date(currentDate.getFullYear(), currentDate.getMonth())
     );
-    return prevMonthDate >= todayMonth;
   };
 
   const goToPrevMonth = () => {
     if (!canGoPrevMonth()) return;
-
     if (currentMonth === 0) {
       setCurrentMonth(11);
       setCurrentYear(currentYear - 1);
-    } else {
-      setCurrentMonth(currentMonth - 1);
-    }
+    } else setCurrentMonth(currentMonth - 1);
   };
 
   const goToNextMonth = () => {
     if (currentMonth === 11) {
       setCurrentMonth(0);
       setCurrentYear(currentYear + 1);
-    } else {
-      setCurrentMonth(currentMonth + 1);
-    }
+    } else setCurrentMonth(currentMonth + 1);
   };
 
   const isPastDate = (day: number) => {
     const selectedDate = new Date(currentYear, currentMonth, day);
     const todayDate = new Date();
-    todayDate.setHours(0, 0, 0, 0);
     selectedDate.setHours(0, 0, 0, 0);
+    todayDate.setHours(0, 0, 0, 0);
     return selectedDate < todayDate;
   };
 
-  const isDateScheduled = (day: number) => {
-    const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
-    return dateSchedules.has(dateKey);
-  };
+  const isDateScheduled = (day: number) =>
+    dateSchedules.has(`${currentYear}-${currentMonth + 1}-${day}`);
 
   const handleDateClick = (day: number) => {
     if (isPastDate(day)) return;
-
     const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
     const scheduled = dateSchedules.get(dateKey);
     if (scheduled) {
@@ -689,13 +682,10 @@ export default function IrrigationScheduleScreen() {
     }
   };
 
-  const isToday = (day: number) => {
-    return (
-      day === today.getDate() &&
-      currentMonth === today.getMonth() &&
-      currentYear === today.getFullYear()
-    );
-  };
+  const isToday = (day: number) =>
+    day === today.getDate() &&
+    currentMonth === today.getMonth() &&
+    currentYear === today.getFullYear();
 
   const handleAddSchedule = () => {
     setNewScheduleDates([]);
@@ -708,6 +698,34 @@ export default function IrrigationScheduleScreen() {
     setAddScheduleModalVisible(true);
   };
 
+  /** Keep `irrigation_time_schedules` in sync (varchar(10) per DB). No duplicates per (schedule_id, time). */
+  const syncTimeScheduleTemplates = async (
+    scheduleId: string,
+    timeStrings: string[],
+  ) => {
+    const seen = new Set<string>();
+    for (const raw of timeStrings) {
+      const t = raw.trim().slice(0, 10);
+      if (!t || seen.has(t)) continue;
+      seen.add(t);
+      const { data: existing } = await supabase
+        .from("irrigation_time_schedules")
+        .select("id")
+        .eq("schedule_id", scheduleId)
+        .eq("time", t)
+        .maybeSingle();
+      if (existing) continue;
+      const { error } = await supabase.from("irrigation_time_schedules").insert({
+        schedule_id: scheduleId,
+        time: t,
+        enabled: true,
+      });
+      if (error) {
+        console.warn("[irrigationSchedule] irrigation_time_schedules insert:", error.message);
+      }
+    }
+  };
+
   const addNewSchedule = async () => {
     if (
       !currentScheduleId ||
@@ -717,86 +735,65 @@ export default function IrrigationScheduleScreen() {
       Alert.alert("Error", "Please select at least one date and one time");
       return;
     }
-
     try {
-      const insertData = [];
-
-      // Create schedule entries for each date and time combination
+      const insertData: Record<string, unknown>[] = [];
       for (const day of newScheduleDates) {
         for (const timeString of newScheduleTimes) {
-          const scheduledDate = new Date(currentYear, currentMonth, day);
-          const scheduleEntry: any = {
+          insertData.push({
             schedule_id: currentScheduleId,
-            scheduled_date: scheduledDate.toISOString().split("T")[0],
+            scheduled_date: toScheduledDateString(
+              currentYear,
+              currentMonth + 1,
+              day,
+            ),
             month: currentMonth + 1,
             year: currentYear,
-            day: day,
-          };
-
-          // Try to add time column if it exists
-          try {
-            scheduleEntry.time = timeString;
-          } catch (e) {
-            // Time column doesn't exist, will be handled by database
-          }
-
-          insertData.push(scheduleEntry);
+            day,
+            time: timeString,
+            approval_status: "approved",
+          });
         }
       }
-
       const { data, error } = await supabase
         .from("irrigation_scheduled_dates")
         .insert(insertData)
         .select();
-
       if (error) {
-        // If time column doesn't exist, try without it
         if (error.code === "42703" && error.message.includes("time")) {
           Alert.alert(
             "Database Schema Error",
-            'The "time" column does not exist in irrigation_scheduled_dates table. Please add it first:\n\n' +
-              "ALTER TABLE irrigation_scheduled_dates ADD COLUMN time VARCHAR(20);",
+            'The "time" column does not exist. Please add it:\n\nALTER TABLE irrigation_scheduled_dates ADD COLUMN time VARCHAR(20);',
           );
           return;
         }
         throw error;
       }
 
-      // Immediately update the local state for today's schedules if any were added for today
-      const today = new Date();
-      const todayDay = today.getDate();
-      const todayMonth = today.getMonth() + 1;
-      const todayYear = today.getFullYear();
+      await syncTimeScheduleTemplates(currentScheduleId, newScheduleTimes);
 
-      // Check if any of the added schedules are for today
-      const addedTodaySchedules = newScheduleDates.filter((day) => {
-        return (
+      const todayDate = new Date();
+      const todayDay = todayDate.getDate();
+      const todayMonth = todayDate.getMonth() + 1;
+      const todayYear = todayDate.getFullYear();
+      const addedToday = newScheduleDates.filter(
+        (day) =>
           day === todayDay &&
           currentMonth + 1 === todayMonth &&
-          currentYear === todayYear
-        );
-      });
-
-      if (addedTodaySchedules.length > 0) {
-        // Immediately update dateSchedules for today to show in stats
+          currentYear === todayYear,
+      );
+      if (addedToday.length > 0) {
         const todayDateKey = `${todayYear}-${todayMonth}-${todayDay}`;
-        const currentSchedulesMap = new Map(dateSchedules);
-
-        if (!currentSchedulesMap.has(todayDateKey)) {
-          currentSchedulesMap.set(todayDateKey, {
+        const currentMap = new Map(dateSchedules);
+        if (!currentMap.has(todayDateKey))
+          currentMap.set(todayDateKey, {
             day: todayDay,
             month: todayMonth,
             year: todayYear,
             schedules: [],
           });
-        }
-
-        const todaySchedule = currentSchedulesMap.get(todayDateKey)!;
-
-        // Add new schedules for today
+        const todaySchedule = currentMap.get(todayDateKey)!;
         newScheduleTimes.forEach((timeString) => {
-          // Find the inserted data entry for this time
-          const insertedEntry = data?.find((d) => {
+          const inserted = data?.find((d) => {
             const dDate = new Date(d.scheduled_date);
             return (
               dDate.getDate() === todayDay &&
@@ -805,33 +802,18 @@ export default function IrrigationScheduleScreen() {
               d.time === timeString
             );
           });
-
-          if (insertedEntry) {
-            todaySchedule.schedules.push({
-              id: insertedEntry.id,
-              time: timeString,
-            });
-          }
+          if (inserted)
+            todaySchedule.schedules.push({ id: inserted.id, time: timeString });
         });
-
-        // Update state immediately for instant UI update (create new Map for React to detect change)
-        setDateSchedules(new Map(currentSchedulesMap));
-
-        // Force immediate stats update for instant feedback
-        setTimeout(() => {
-          updateTodayStats();
-        }, 10);
+        setDateSchedules(new Map(currentMap));
+        setTimeout(() => updateTodayStats(), 10);
       }
-
-      // Then fetch all schedules to ensure everything is in sync (this will also update stats via useEffect)
       await fetchScheduledDates(currentScheduleId);
       setAddScheduleModalVisible(false);
       Alert.alert(
         "Success",
-        `Schedule added successfully for ${newScheduleDates.length} date(s)!`,
+        `Schedule added for ${newScheduleDates.length} date(s)!`,
       );
-
-      // Stats will auto-update via useEffect when dateSchedules changes
     } catch (error) {
       console.error("Error adding schedule:", error);
       Alert.alert("Error", "Failed to add schedule");
@@ -844,17 +826,10 @@ export default function IrrigationScheduleScreen() {
         .from("irrigation_scheduled_dates")
         .delete()
         .eq("id", scheduleId);
-
       if (error) throw error;
-
-      // Refresh schedules
-      if (currentScheduleId) {
-        await fetchScheduledDates(currentScheduleId);
-      }
+      if (currentScheduleId) await fetchScheduledDates(currentScheduleId);
       setScheduleInfoModalVisible(false);
       Alert.alert("Success", "Schedule deleted");
-
-      // Stats will auto-update via useEffect when dateSchedules changes
     } catch (error) {
       console.error("Error deleting schedule:", error);
       Alert.alert("Error", "Failed to delete schedule");
@@ -865,7 +840,6 @@ export default function IrrigationScheduleScreen() {
     setSelectedHour(hour);
     setNewScheduleTime(`${hour}:${selectedMinute}`);
   };
-
   const handleSelectMinute = (minute: string) => {
     setSelectedMinute(minute);
     setNewScheduleTime(`${selectedHour}:${minute}`);
@@ -873,18 +847,14 @@ export default function IrrigationScheduleScreen() {
 
   const handleConfirmTime = () => {
     const timeString = `${selectedHour}:${selectedMinute} ${newSchedulePeriod}`;
-
     if (editingTimeIndex !== null) {
-      // Update existing time
-      const updatedTimes = [...newScheduleTimes];
-      updatedTimes[editingTimeIndex] = timeString;
-      setNewScheduleTimes(updatedTimes);
+      const updated = [...newScheduleTimes];
+      updated[editingTimeIndex] = timeString;
+      setNewScheduleTimes(updated);
       setEditingTimeIndex(null);
     } else {
-      // Add new time
       setNewScheduleTimes([...newScheduleTimes, timeString]);
     }
-
     setNewScheduleTime("08:00");
     setNewSchedulePeriod("AM");
     setSelectedHour("08");
@@ -899,7 +869,6 @@ export default function IrrigationScheduleScreen() {
     setSelectedHour(hour);
     setSelectedMinute(minute);
   };
-
   const handleAddTime = () => {
     setEditingTimeIndex(null);
     setNewScheduleTime("08:00");
@@ -913,7 +882,6 @@ export default function IrrigationScheduleScreen() {
     const timeString = newScheduleTimes[index];
     const [timePart, period] = timeString.split(" ");
     const [hour, minute] = timePart.split(":");
-
     setEditingTimeIndex(index);
     setNewScheduleTime(timePart);
     setNewSchedulePeriod(period as "AM" | "PM");
@@ -923,125 +891,80 @@ export default function IrrigationScheduleScreen() {
   };
 
   const handleRemoveTime = (index: number) => {
-    if (newScheduleTimes.length > 1) {
+    if (newScheduleTimes.length > 1)
       setNewScheduleTimes(newScheduleTimes.filter((_, i) => i !== index));
-    } else {
-      Alert.alert("Error", "At least one time is required");
-    }
+    else Alert.alert("Error", "At least one time is required");
   };
 
   const toggleDateSelection = (day: number) => {
-    if (newScheduleDates.includes(day)) {
+    if (newScheduleDates.includes(day))
       setNewScheduleDates(newScheduleDates.filter((d) => d !== day));
-    } else {
-      setNewScheduleDates([...newScheduleDates, day]);
-    }
+    else setNewScheduleDates([...newScheduleDates, day]);
   };
 
   const getAvailableDates = () => {
     const available: number[] = [];
     for (let day = 1; day <= daysInMonth; day++) {
-      if (!isPastDate(day)) {
-        available.push(day);
-      }
+      if (!isPastDate(day)) available.push(day);
     }
     return available;
   };
 
-  // Convert time string (e.g., "08:00 PM") to minutes since midnight
   const timeToMinutes = (timeStr: string): number => {
     try {
       const [time, period] = timeStr.split(" ");
       const [hour, minute] = time.split(":").map(Number);
-      let totalMinutes = hour * 60 + minute;
-
-      if (period === "PM" && hour !== 12) {
-        totalMinutes += 12 * 60;
-      } else if (period === "AM" && hour === 12) {
-        totalMinutes -= 12 * 60;
-      }
-
-      return totalMinutes;
-    } catch (e) {
+      let total = hour * 60 + minute;
+      if (period === "PM" && hour !== 12) total += 12 * 60;
+      else if (period === "AM" && hour === 12) total -= 12 * 60;
+      return total;
+    } catch {
       return 0;
     }
   };
 
-  // Get all scheduled times for today
-  const getTodayScheduledTimes = (): {
-    time: string;
-    minutes: number;
-  }[] => {
-    const today = new Date();
-    const todayDay = today.getDate();
-    const todayMonth = today.getMonth() + 1;
-    const todayYear = today.getFullYear();
-    const dateKey = `${todayYear}-${todayMonth}-${todayDay}`;
-
+  const getTodayScheduledTimes = (): { time: string; minutes: number }[] => {
+    const todayDate = new Date();
+    const dateKey = `${todayDate.getFullYear()}-${todayDate.getMonth() + 1}-${todayDate.getDate()}`;
     const todaySchedule = dateSchedules.get(dateKey);
     if (!todaySchedule) return [];
-
     return todaySchedule.schedules
-      .map((s) => ({
-        time: s.time,
-        minutes: timeToMinutes(s.time),
-      }))
+      .map((s) => ({ time: s.time, minutes: timeToMinutes(s.time) }))
       .filter((s) => s.minutes > 0)
       .sort((a, b) => a.minutes - b.minutes);
   };
 
-  // Update today's stats and next schedule
   const updateTodayStats = () => {
     const todayTimes = getTodayScheduledTimes();
     setTodayScheduledTimesCount(todayTimes.length);
-
     if (todayTimes.length === 0) {
       setNextScheduleTime("No schedule");
       return;
     }
-
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-    // Find next schedule time
-    const nextSchedule = todayTimes.find((t) => t.minutes > currentMinutes);
-
-    if (nextSchedule) {
-      setNextScheduleTime(nextSchedule.time);
-    } else {
-      // If all schedules have passed, show the first one tomorrow or "No more today"
-      setNextScheduleTime("No more today");
-    }
+    const next = todayTimes.find((t) => t.minutes > currentMinutes);
+    setNextScheduleTime(next ? next.time : "No more today");
   };
 
-  // Handle alarm OK button - delete the schedule
   const handleAlarmOK = async () => {
     if (!alarmScheduleData || !currentScheduleId) {
       setAlarmModalVisible(false);
       setAlarmScheduleData(null);
       return;
     }
-
     try {
-      // Find the schedule entry to delete
       const dateKey = `${alarmScheduleData.year}-${alarmScheduleData.month}-${alarmScheduleData.day}`;
       const dateSchedule = dateSchedules.get(dateKey);
-
       let scheduleEntryId: string | null = null;
-
       if (dateSchedule) {
-        // Find the schedule entry by matching time
-        const scheduleEntry = dateSchedule.schedules.find(
+        const entry = dateSchedule.schedules.find(
           (s) => s.time === alarmScheduleData.time,
         );
-        if (scheduleEntry) {
-          scheduleEntryId = scheduleEntry.id;
-        }
+        if (entry) scheduleEntryId = entry.id;
       }
-
-      // If not found in state, query database directly
       if (!scheduleEntryId) {
-        const { data: scheduleData, error: queryError } = await supabase
+        const { data: sd, error: qe } = await supabase
           .from("irrigation_scheduled_dates")
           .select("id")
           .eq("schedule_id", currentScheduleId)
@@ -1051,32 +974,18 @@ export default function IrrigationScheduleScreen() {
           .eq("time", alarmScheduleData.time)
           .limit(1)
           .single();
-
-        if (!queryError && scheduleData) {
-          scheduleEntryId = scheduleData.id;
-        }
+        if (!qe && sd) scheduleEntryId = sd.id;
       }
-
-      // Delete the schedule entry
       if (scheduleEntryId) {
         const { error } = await supabase
           .from("irrigation_scheduled_dates")
           .delete()
           .eq("id", scheduleEntryId);
-
         if (error) throw error;
-      } else {
-        console.warn("Schedule entry not found for deletion");
       }
-
-      // Refresh schedules to update UI and remove from calendar
       await fetchScheduledDates(currentScheduleId);
-
-      // Close modal and clear data
       setAlarmModalVisible(false);
       setAlarmScheduleData(null);
-
-      // Stats will auto-update via useEffect when dateSchedules changes
     } catch (error) {
       console.error("Error deleting schedule from alarm:", error);
       Alert.alert("Error", "Failed to dismiss schedule");
@@ -1085,41 +994,26 @@ export default function IrrigationScheduleScreen() {
     }
   };
 
-  // Filter out past schedules from display
-  const filterPastSchedules = (schedules: DateSchedule): DateSchedule => {
+  const filterPastSchedules = (s: DateSchedule): DateSchedule => {
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    const scheduleDate = new Date(
-      schedules.year,
-      schedules.month - 1,
-      schedules.day,
-    );
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const scheduleDate = new Date(s.year, s.month - 1, s.day);
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
     scheduleDate.setHours(0, 0, 0, 0);
-
-    // If schedule is for today, filter out past times
-    if (scheduleDate.getTime() === today.getTime()) {
+    if (scheduleDate.getTime() === todayDate.getTime())
       return {
-        ...schedules,
-        schedules: schedules.schedules.filter((s) => {
-          const scheduleMinutes = timeToMinutes(s.time);
-          return scheduleMinutes > currentMinutes;
-        }),
+        ...s,
+        schedules: s.schedules.filter(
+          (sc) => timeToMinutes(sc.time) > currentMinutes,
+        ),
       };
-    }
-
-    // If schedule is in the past, return empty schedules
-    if (scheduleDate < today) {
-      return {
-        ...schedules,
-        schedules: [],
-      };
-    }
-
-    // Future dates, keep all schedules
-    return schedules;
+    if (scheduleDate < todayDate) return { ...s, schedules: [] };
+    return s;
   };
+
+  // Get today's scheduled times list for TIME SCHEDULE card
+  const todayTimes = getTodayScheduledTimes();
 
   if (loading) {
     return (
@@ -1135,6 +1029,7 @@ export default function IrrigationScheduleScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
+        {/* ── Header ── */}
         <View style={styles.topBar}>
           <TouchableOpacity
             onPress={() => router.back()}
@@ -1142,11 +1037,7 @@ export default function IrrigationScheduleScreen() {
           >
             <FontAwesome name="chevron-left" size={18} color={colors.dark} />
           </TouchableOpacity>
-
-          <View style={styles.titleRow}>
-            <Text style={styles.topBarTitle}>IRRIGATION SCHEDULE</Text>
-          </View>
-
+          <Text style={styles.topBarTitle}>IRRIGATION SCHEDULE</Text>
           <View style={styles.placeholder} />
         </View>
 
@@ -1155,19 +1046,7 @@ export default function IrrigationScheduleScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.heroCard}>
-            <View style={styles.heroStats}>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Scheduled times today</Text>
-                <Text style={styles.statValue}>{todayScheduledTimesCount}</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Next schedule</Text>
-                <Text style={styles.statValue}>{nextScheduleTime}</Text>
-              </View>
-            </View>
-          </View>
-
+          {/* ── Calendar ── */}
           <View style={styles.calendarSection}>
             <View style={styles.monthNav}>
               {canGoPrevMonth() ? (
@@ -1214,7 +1093,6 @@ export default function IrrigationScheduleScreen() {
                 const isSelected = day !== null && isDateScheduled(day);
                 const isTodayDate = day !== null && isToday(day);
                 const isPast = day !== null && isPastDate(day);
-
                 return (
                   <TouchableOpacity
                     key={index}
@@ -1243,50 +1121,96 @@ export default function IrrigationScheduleScreen() {
             </View>
           </View>
 
-          {(() => {
-            // Check if there are any scheduled dates in the current month
-            const hasScheduledDates = Array.from(dateSchedules.values()).some(
-              (schedule) =>
-                schedule.month === currentMonth + 1 &&
-                schedule.year === currentYear,
-            );
-
-            if (!hasScheduledDates) return null;
-
-            return (
-              <View style={styles.legend}>
-                <View style={styles.legendItem}>
-                  <View
-                    style={[
-                      styles.legendDot,
-                      { backgroundColor: colors.primary },
-                    ]}
-                  />
-                  <Text style={styles.legendText}>Scheduled</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View
-                    style={[
-                      styles.legendDot,
-                      { backgroundColor: colors.grayText },
-                    ]}
-                  />
-                  <Text style={styles.legendText}>Available</Text>
-                </View>
+          {Array.from(dateSchedules.values()).some(
+            (s) => s.month === currentMonth + 1 && s.year === currentYear,
+          ) && (
+            <View style={styles.legend}>
+              <View style={styles.legendItem}>
+                <View
+                  style={[
+                    styles.legendDot,
+                    { backgroundColor: colors.primary },
+                  ]}
+                />
+                <Text style={styles.legendText}>Scheduled</Text>
               </View>
-            );
-          })()}
+              <View style={styles.legendItem}>
+                <View
+                  style={[
+                    styles.legendDot,
+                    { backgroundColor: colors.grayText },
+                  ]}
+                />
+                <Text style={styles.legendText}>Available</Text>
+              </View>
+            </View>
+          )}
+
+          {/* ── TIME SCHEDULE Card ── */}
+          <View style={styles.timeScheduleCard}>
+            <View style={styles.timeScheduleLeft}>
+              <Text style={styles.timeScheduleLabel}>TIME{"\n"}SCHEDULE</Text>
+            </View>
+            <View style={styles.timeScheduleDivider} />
+            <View style={styles.timeScheduleRight}>
+              {todayTimes.length > 0 ? (
+                todayTimes.map((t, i) => (
+                  <Text key={i} style={styles.timeScheduleItem}>
+                    {t.time}
+                  </Text>
+                ))
+              ) : (
+                <Text style={styles.timeScheduleEmpty}>No schedule today</Text>
+              )}
+            </View>
+          </View>
+
+          {/* ── Sensor Cards ── */}
+          <SensorCard
+            label="Soil Moisture"
+            value={soilMoisture}
+            max={100}
+            unit="%"
+            trackColor="#DBEAFE"
+            fillColor={colors.purple}
+            icon="tint"
+            iconColor={colors.purple}
+            iconBg={colors.purpleLight}
+          />
+          <SensorCard
+            label="Temperature"
+            value={temperature}
+            max={50}
+            unit="°C"
+            trackColor="#EDE9FE"
+            fillColor={colors.purple}
+            icon="thermometer-half"
+            iconColor={colors.purple}
+            iconBg={colors.purpleLight}
+          />
+          <SensorCard
+            label="Humidity"
+            value={humidity}
+            max={100}
+            unit="%"
+            trackColor="#EDE9FE"
+            fillColor={colors.purple}
+            icon="leaf"
+            iconColor={colors.purple}
+            iconBg={colors.purpleLight}
+            alert
+          />
         </ScrollView>
 
-        {/* Floating Action Button */}
+        {/* ── FAB ── */}
         <TouchableOpacity style={styles.fab} onPress={handleAddSchedule}>
           <FontAwesome name="plus" size={24} color={colors.white} />
         </TouchableOpacity>
 
-        {/* Add Schedule Modal */}
+        {/* ── Add Schedule Modal ── */}
         <Modal
           animationType="fade"
-          transparent={true}
+          transparent
           visible={addScheduleModalVisible}
           onRequestClose={() => setAddScheduleModalVisible(false)}
         >
@@ -1300,7 +1224,6 @@ export default function IrrigationScheduleScreen() {
                   <FontAwesome name="times" size={24} color={colors.dark} />
                 </TouchableOpacity>
               </View>
-
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>
                   Select Date(s) - Multiple selection allowed
@@ -1339,7 +1262,6 @@ export default function IrrigationScheduleScreen() {
                   </Text>
                 )}
               </View>
-
               <View style={styles.timeInputContainer}>
                 <View style={styles.timeHeaderRow}>
                   <Text style={styles.inputLabel}>Time(s)</Text>
@@ -1351,8 +1273,6 @@ export default function IrrigationScheduleScreen() {
                     <Text style={styles.addTimeButtonText}>Add Time</Text>
                   </TouchableOpacity>
                 </View>
-
-                {/* Display selected times */}
                 {newScheduleTimes.length > 0 && (
                   <View style={styles.timesList}>
                     {newScheduleTimes.map((time, index) => (
@@ -1384,17 +1304,13 @@ export default function IrrigationScheduleScreen() {
                     ))}
                   </View>
                 )}
-
                 {showTimePicker && (
                   <View style={styles.timePickerSection}>
                     <Text style={styles.timePickerTitle}>
                       {editingTimeIndex !== null ? "Edit Time" : "Add New Time"}
                     </Text>
                     <View style={styles.timeInputRow}>
-                      <TouchableOpacity
-                        style={styles.timeSelector}
-                        onPress={() => setShowTimePicker(true)}
-                      >
+                      <TouchableOpacity style={styles.timeSelector}>
                         <Text style={styles.timeSelectorText}>
                           {newScheduleTime}
                         </Text>
@@ -1405,45 +1321,29 @@ export default function IrrigationScheduleScreen() {
                         />
                       </TouchableOpacity>
                       <View style={styles.periodButtons}>
-                        <TouchableOpacity
-                          style={[
-                            styles.periodButton,
-                            newSchedulePeriod === "AM" &&
-                              styles.periodButtonActive,
-                          ]}
-                          onPress={() => setNewSchedulePeriod("AM")}
-                        >
-                          <Text
+                        {(["AM", "PM"] as const).map((p) => (
+                          <TouchableOpacity
+                            key={p}
                             style={[
-                              styles.periodButtonText,
-                              newSchedulePeriod === "AM" &&
-                                styles.periodButtonTextActive,
+                              styles.periodButton,
+                              newSchedulePeriod === p &&
+                                styles.periodButtonActive,
                             ]}
+                            onPress={() => setNewSchedulePeriod(p)}
                           >
-                            AM
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[
-                            styles.periodButton,
-                            newSchedulePeriod === "PM" &&
-                              styles.periodButtonActive,
-                          ]}
-                          onPress={() => setNewSchedulePeriod("PM")}
-                        >
-                          <Text
-                            style={[
-                              styles.periodButtonText,
-                              newSchedulePeriod === "PM" &&
-                                styles.periodButtonTextActive,
-                            ]}
-                          >
-                            PM
-                          </Text>
-                        </TouchableOpacity>
+                            <Text
+                              style={[
+                                styles.periodButtonText,
+                                newSchedulePeriod === p &&
+                                  styles.periodButtonTextActive,
+                              ]}
+                            >
+                              {p}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
                       </View>
                     </View>
-
                     <View style={styles.timePickerWrapper}>
                       <View style={styles.timePickerContainer}>
                         <View style={styles.timePickerColumn}>
@@ -1475,7 +1375,6 @@ export default function IrrigationScheduleScreen() {
                             ))}
                           </ScrollView>
                         </View>
-
                         <View style={styles.timePickerColumn}>
                           <Text style={styles.timePickerLabel}>Minute</Text>
                           <ScrollView
@@ -1506,7 +1405,6 @@ export default function IrrigationScheduleScreen() {
                           </ScrollView>
                         </View>
                       </View>
-
                       <View style={styles.timePickerActions}>
                         <TouchableOpacity
                           style={styles.timePickerCancelButton}
@@ -1529,7 +1427,6 @@ export default function IrrigationScheduleScreen() {
                   </View>
                 )}
               </View>
-
               {!showTimePicker && (
                 <View style={styles.addScheduleModalActions}>
                   <TouchableOpacity
@@ -1559,10 +1456,10 @@ export default function IrrigationScheduleScreen() {
           </View>
         </Modal>
 
-        {/* Schedule Info Modal */}
+        {/* ── Schedule Info Modal ── */}
         <Modal
           animationType="fade"
-          transparent={true}
+          transparent
           visible={scheduleInfoModalVisible}
           onRequestClose={() => setScheduleInfoModalVisible(false)}
         >
@@ -1576,12 +1473,10 @@ export default function IrrigationScheduleScreen() {
                   <FontAwesome name="times" size={24} color={colors.dark} />
                 </TouchableOpacity>
               </View>
-
               {selectedScheduleInfo &&
                 (() => {
-                  const filteredSchedule =
-                    filterPastSchedules(selectedScheduleInfo);
-                  if (filteredSchedule.schedules.length === 0) {
+                  const filtered = filterPastSchedules(selectedScheduleInfo);
+                  if (filtered.schedules.length === 0)
                     return (
                       <View style={styles.scheduleInfoBody}>
                         <Text style={styles.noSchedulesText}>
@@ -1589,7 +1484,6 @@ export default function IrrigationScheduleScreen() {
                         </Text>
                       </View>
                     );
-                  }
                   return (
                     <View style={styles.scheduleInfoBody}>
                       <View style={styles.infoRow}>
@@ -1606,7 +1500,6 @@ export default function IrrigationScheduleScreen() {
                           </Text>
                         </View>
                       </View>
-
                       <View style={styles.infoRow}>
                         <FontAwesome
                           name="clock-o"
@@ -1616,27 +1509,25 @@ export default function IrrigationScheduleScreen() {
                         <View style={styles.infoContent}>
                           <Text style={styles.infoLabel}>Time(s)</Text>
                           <View style={styles.timesList}>
-                            {filteredSchedule.schedules.map(
-                              (schedule, index) => (
-                                <View key={schedule.id} style={styles.timeItem}>
-                                  <Text style={styles.timeItemText}>
-                                    {schedule.time}
-                                  </Text>
-                                  <TouchableOpacity
-                                    style={styles.timeItemDeleteButton}
-                                    onPress={() =>
-                                      deleteScheduleDate(schedule.id)
-                                    }
-                                  >
-                                    <FontAwesome
-                                      name="times"
-                                      size={12}
-                                      color="#EF4444"
-                                    />
-                                  </TouchableOpacity>
-                                </View>
-                              ),
-                            )}
+                            {filtered.schedules.map((schedule) => (
+                              <View key={schedule.id} style={styles.timeItem}>
+                                <Text style={styles.timeItemText}>
+                                  {schedule.time}
+                                </Text>
+                                <TouchableOpacity
+                                  style={styles.timeItemDeleteButton}
+                                  onPress={() =>
+                                    deleteScheduleDate(schedule.id)
+                                  }
+                                >
+                                  <FontAwesome
+                                    name="times"
+                                    size={12}
+                                    color="#EF4444"
+                                  />
+                                </TouchableOpacity>
+                              </View>
+                            ))}
                           </View>
                         </View>
                       </View>
@@ -1647,10 +1538,10 @@ export default function IrrigationScheduleScreen() {
           </View>
         </Modal>
 
-        {/* Alarm/Reminder Modal */}
+        {/* ── Alarm Modal ── */}
         <Modal
           animationType="fade"
-          transparent={true}
+          transparent
           visible={alarmModalVisible}
           onRequestClose={() => setAlarmModalVisible(false)}
         >
@@ -1659,15 +1550,12 @@ export default function IrrigationScheduleScreen() {
               <View style={styles.alarmIconContainer}>
                 <FontAwesome name="bell" size={48} color={colors.primary} />
               </View>
-
               <Text style={styles.alarmTitle}>🌱 Irrigation Reminder</Text>
-
               {alarmScheduleData && (
                 <>
                   <Text style={styles.alarmMessage}>
                     Time to irrigate your crops!
                   </Text>
-
                   <View style={styles.alarmInfoContainer}>
                     <View style={styles.alarmInfoRow}>
                       <FontAwesome
@@ -1680,7 +1568,6 @@ export default function IrrigationScheduleScreen() {
                         {alarmScheduleData.day}, {alarmScheduleData.year}
                       </Text>
                     </View>
-
                     <View style={styles.alarmInfoRow}>
                       <FontAwesome
                         name="clock-o"
@@ -1692,7 +1579,6 @@ export default function IrrigationScheduleScreen() {
                       </Text>
                     </View>
                   </View>
-
                   <TouchableOpacity
                     style={styles.alarmOKButton}
                     onPress={handleAlarmOK}
@@ -1710,24 +1596,15 @@ export default function IrrigationScheduleScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.grayLight,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  safeArea: { flex: 1, backgroundColor: colors.grayLight },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: {
     marginTop: 12,
     fontFamily: fonts.medium,
     fontSize: 16,
     color: colors.grayText,
   },
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -1743,69 +1620,18 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  backButton: {
-    padding: 4,
-    width: 32,
-  },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
+  backButton: { padding: 4, width: 32 },
   topBarTitle: {
     fontFamily: fonts.bold,
     fontSize: 15,
     color: colors.dark,
     letterSpacing: 0.5,
   },
-  placeholder: {
-    width: 32,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-    gap: 18,
-    paddingBottom: 80,
-  },
-  heroCard: {
-    backgroundColor: colors.white,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.grayBorder,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-    gap: 12,
-  },
-  heroStats: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: colors.grayLight,
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: colors.grayBorder,
-  },
-  statLabel: {
-    fontFamily: fonts.medium,
-    fontSize: 11,
-    color: colors.grayText,
-  },
-  statValue: {
-    fontFamily: fonts.bold,
-    fontSize: 18,
-    color: colors.dark,
-    marginTop: 6,
-  },
+  placeholder: { width: 32 },
+  scroll: { flex: 1 },
+  scrollContent: { padding: 16, gap: 14, paddingBottom: 100 },
+
+  // Calendar
   calendarSection: {
     backgroundColor: colors.white,
     borderRadius: 12,
@@ -1834,9 +1660,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  navButtonDisabled: {
-    backgroundColor: "transparent",
-  },
+  navButtonDisabled: { backgroundColor: "transparent" },
   monthTitle: {
     fontFamily: fonts.bold,
     fontSize: 18,
@@ -1852,10 +1676,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 14,
   },
-  dayHeaders: {
-    flexDirection: "row",
-    marginBottom: 8,
-  },
+  dayHeaders: { flexDirection: "row", marginBottom: 8 },
   dayHeader: {
     flex: 1,
     textAlign: "center",
@@ -1878,54 +1699,71 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     backgroundColor: colors.white,
   },
-  dayText: {
-    fontFamily: fonts.regular,
-    fontSize: 14,
-    color: colors.dark,
-  },
-  emptyDay: {
-    color: "transparent",
-  },
-  selectedDay: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-  },
-  selectedDayText: {
-    color: colors.white,
-    fontFamily: fonts.bold,
-  },
-  todayText: {
-    color: colors.accent,
-    fontFamily: fonts.bold,
-  },
-  pastDay: {
-    backgroundColor: "#F7F7F7",
-    opacity: 1,
-  },
-  pastDayText: {
-    color: "#D1D5DB",
-    opacity: 1,
-  },
-  legend: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 24,
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
+  dayText: { fontFamily: fonts.regular, fontSize: 14, color: colors.dark },
+  emptyDay: { color: "transparent" },
+  selectedDay: { backgroundColor: colors.primary, borderRadius: 8 },
+  selectedDayText: { color: colors.white, fontFamily: fonts.bold },
+  todayText: { color: colors.accent, fontFamily: fonts.bold },
+  pastDay: { backgroundColor: "#F7F7F7" },
+  pastDayText: { color: "#D1D5DB" },
+  legend: { flexDirection: "row", justifyContent: "center", gap: 24 },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
   legendText: {
     fontFamily: fonts.regular,
     fontSize: 12,
     color: colors.grayText,
   },
+
+  // TIME SCHEDULE card
+  timeScheduleCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.grayBorder,
+    flexDirection: "row",
+    alignItems: "stretch",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  timeScheduleLeft: {
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+    backgroundColor: colors.grayLight,
+  },
+  timeScheduleLabel: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: colors.dark,
+    letterSpacing: 0.5,
+    lineHeight: 20,
+  },
+  timeScheduleDivider: { width: 1, backgroundColor: colors.grayBorder },
+  timeScheduleRight: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    justifyContent: "center",
+    gap: 4,
+  },
+  timeScheduleItem: {
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    color: colors.dark,
+  },
+  timeScheduleEmpty: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: colors.grayText,
+    fontStyle: "italic",
+  },
+
+  // FAB
   fab: {
     position: "absolute",
     bottom: 24,
@@ -1942,9 +1780,11 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+
+  // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
@@ -1969,23 +1809,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  modalTitle: {
-    fontFamily: fonts.bold,
-    fontSize: 20,
-    color: colors.dark,
-  },
-  inputContainer: {
-    marginBottom: 20,
-  },
+  modalTitle: { fontFamily: fonts.bold, fontSize: 20, color: colors.dark },
+  inputContainer: { marginBottom: 20 },
   inputLabel: {
     fontFamily: fonts.medium,
     fontSize: 16,
     color: colors.dark,
     marginBottom: 12,
   },
-  dateScroll: {
-    flexDirection: "row",
-  },
+  dateScroll: { flexDirection: "row" },
   dateOption: {
     paddingVertical: 12,
     paddingHorizontal: 16,
@@ -2006,18 +1838,53 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.dark,
   },
-  dateOptionTextSelected: {
-    color: colors.white,
-    fontFamily: fonts.bold,
+  dateOptionTextSelected: { color: colors.white, fontFamily: fonts.bold },
+  selectedDatesText: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.grayText,
+    marginTop: 8,
   },
-  timeInputContainer: {
-    marginBottom: 20,
+  timeInputContainer: { marginBottom: 20 },
+  timeHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
   },
-  timeInputRow: {
+  addTimeButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
+  addTimeButtonText: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: colors.primaryDark,
+  },
+  timesList: { gap: 8, marginTop: 8 },
+  timeItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: colors.grayLight,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.grayBorder,
+  },
+  timeItemText: { fontFamily: fonts.medium, fontSize: 14, color: colors.dark },
+  timeItemActions: { flexDirection: "row", gap: 8 },
+  timeItemButton: { padding: 4 },
+  timeItemDeleteButton: { padding: 4 },
+  timeInputRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   timeSelector: {
     flex: 1,
     borderWidth: 1,
@@ -2033,9 +1900,40 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.dark,
   },
-  timePickerWrapper: {
-    marginTop: 12,
+  periodButtons: { flexDirection: "row", gap: 8 },
+  periodButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: colors.grayLight,
+    borderWidth: 1,
+    borderColor: colors.grayBorder,
   },
+  periodButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  periodButtonText: {
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    color: colors.grayText,
+  },
+  periodButtonTextActive: { color: colors.white },
+  timePickerSection: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: colors.grayLight,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.grayBorder,
+  },
+  timePickerTitle: {
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: colors.dark,
+    marginBottom: 12,
+  },
+  timePickerWrapper: { marginTop: 12 },
   timePickerContainer: {
     flexDirection: "row",
     gap: 12,
@@ -2043,9 +1941,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
   },
-  timePickerColumn: {
-    flex: 1,
-  },
+  timePickerColumn: { flex: 1 },
   timePickerLabel: {
     fontFamily: fonts.medium,
     fontSize: 12,
@@ -2053,9 +1949,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textAlign: "center",
   },
-  timePickerScroll: {
-    maxHeight: 120,
-  },
+  timePickerScroll: { maxHeight: 120 },
   timePickerOption: {
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -2079,11 +1973,7 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
     fontFamily: fonts.semibold,
   },
-  timePickerActions: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 12,
-  },
+  timePickerActions: { flexDirection: "row", gap: 12, marginTop: 12 },
   timePickerCancelButton: {
     flex: 1,
     paddingVertical: 10,
@@ -2110,35 +2000,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.white,
   },
-  periodButtons: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  periodButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: colors.grayLight,
-    borderWidth: 1,
-    borderColor: colors.grayBorder,
-  },
-  periodButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  periodButtonText: {
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    color: colors.grayText,
-  },
-  periodButtonTextActive: {
-    color: colors.white,
-  },
-  addScheduleModalActions: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 24,
-  },
+  addScheduleModalActions: { flexDirection: "row", gap: 12, marginTop: 24 },
   cancelButton: {
     flex: 1,
     paddingVertical: 14,
@@ -2160,17 +2022,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: colors.primary,
   },
-  addButtonDisabled: {
-    backgroundColor: colors.grayText,
-  },
+  addButtonDisabled: { backgroundColor: colors.grayText },
   addButtonText: {
     fontFamily: fonts.semibold,
     fontSize: 16,
     color: colors.white,
   },
-  scheduleInfoBody: {
-    gap: 16,
-  },
+  scheduleInfoBody: { gap: 16 },
   infoRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2179,106 +2037,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.grayLight,
     borderRadius: 12,
   },
-  infoContent: {
-    flex: 1,
-  },
+  infoContent: { flex: 1 },
   infoLabel: {
     fontFamily: fonts.medium,
     fontSize: 12,
     color: colors.grayText,
     marginBottom: 4,
   },
-  infoValue: {
-    fontFamily: fonts.semibold,
-    fontSize: 16,
-    color: colors.dark,
-  },
-  deleteButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: "#EF4444",
-    marginTop: 8,
-  },
-  deleteButtonText: {
-    fontFamily: fonts.semibold,
-    fontSize: 16,
-    color: colors.white,
-  },
-  selectedDatesText: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
+  infoValue: { fontFamily: fonts.semibold, fontSize: 16, color: colors.dark },
+  noSchedulesText: {
+    fontFamily: fonts.medium,
+    fontSize: 14,
     color: colors.grayText,
-    marginTop: 8,
-  },
-  timeHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  addTimeButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: colors.primaryLight,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  addTimeButtonText: {
-    fontFamily: fonts.medium,
-    fontSize: 12,
-    color: colors.primaryDark,
-  },
-  timesList: {
-    gap: 8,
-    marginTop: 8,
-  },
-  timeItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: colors.grayLight,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.grayBorder,
-  },
-  timeItemText: {
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    color: colors.dark,
-  },
-  timeItemActions: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  timeItemButton: {
-    padding: 4,
-  },
-  timeItemDeleteButton: {
-    padding: 4,
-  },
-  timePickerSection: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: colors.grayLight,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.grayBorder,
-  },
-  timePickerTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 14,
-    color: colors.dark,
-    marginBottom: 12,
+    textAlign: "center",
+    padding: 20,
   },
   alarmModalContent: {
     backgroundColor: colors.white,
@@ -2311,11 +2083,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     textAlign: "center",
   },
-  alarmInfoContainer: {
-    width: "100%",
-    gap: 12,
-    marginBottom: 24,
-  },
+  alarmInfoContainer: { width: "100%", gap: 12, marginBottom: 24 },
   alarmInfoRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2324,11 +2092,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.grayLight,
     borderRadius: 10,
   },
-  alarmInfoText: {
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    color: colors.dark,
-  },
+  alarmInfoText: { fontFamily: fonts.medium, fontSize: 14, color: colors.dark },
   alarmOKButton: {
     width: "100%",
     paddingVertical: 16,
@@ -2340,12 +2104,5 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 18,
     color: colors.white,
-  },
-  noSchedulesText: {
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    color: colors.grayText,
-    textAlign: "center",
-    padding: 20,
   },
 });

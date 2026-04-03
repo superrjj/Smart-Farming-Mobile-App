@@ -43,5 +43,3 @@ app-example
 /ios
 /android
 
-# API keys and sensitive config
-lib/sendgridConfig.ts
