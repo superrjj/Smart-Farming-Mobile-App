@@ -251,16 +251,6 @@ export default function HistoryIrrigationLoggingScreen() {
           ))}
         </View>
       </ScrollView>
-
-      {/* Floating Action Buttons */}
-      <View style={styles.fab}>
-        <TouchableOpacity style={styles.fabBtn} accessibilityLabel="Alert">
-          <FontAwesome name="exclamation" size={16} color={colors.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.fabBtn} accessibilityLabel="Help">
-          <FontAwesome name="question" size={16} color={colors.primary} />
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 }

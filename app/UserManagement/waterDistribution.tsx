@@ -1,3 +1,4 @@
+import { fontScale, scale } from "@/lib/responsive";
 import { FontAwesome } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -9,7 +10,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { scale, fontScale } from "@/lib/responsive";
 
 const colors = {
   primary: "#0891B2",
@@ -74,49 +74,9 @@ export default function WaterDistributionScreen() {
 
           <View style={styles.titleRow}>
             <Text style={styles.topBarTitle}>WATER DISTRIBUTION</Text>
-            <TouchableOpacity onPress={handleAddArea} style={styles.addButton}>
-              <FontAwesome name="plus" size={18} color={colors.primary} />
-            </TouchableOpacity>
           </View>
 
           <View style={styles.placeholder} />
-        </View>
-
-        {/* Control Buttons */}
-        <View style={styles.controlsContainer}>
-          <TouchableOpacity
-            style={[
-              styles.controlButton,
-              styles.startButton,
-              isRunning && styles.activeButton,
-            ]}
-            onPress={handleStart}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.controlButtonText, styles.startButtonText]}>
-              START
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.controlButton,
-              styles.stopButton,
-              !isRunning && styles.stopActiveButton,
-            ]}
-            onPress={handleStop}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.controlButtonText,
-                styles.stopButtonText,
-                !isRunning && styles.stopActiveText,
-              ]}
-            >
-              STOP
-            </Text>
-          </TouchableOpacity>
         </View>
 
         {/* Areas List */}
@@ -229,17 +189,17 @@ export default function WaterDistributionScreen() {
         <View style={styles.footer}>
           <View style={styles.footerStat}>
             <Text style={styles.footerStatLabel}>Total Flow</Text>
-            <Text style={styles.footerStatValue}>2.2 L/min</Text>
+            <Text style={styles.footerStatValue}>1.2 L/min</Text>
           </View>
           <View style={styles.footerDivider} />
           <View style={styles.footerStat}>
             <Text style={styles.footerStatLabel}>Active Zones</Text>
-            <Text style={styles.footerStatValue}>2/3</Text>
+            <Text style={styles.footerStatValue}>1/1</Text>
           </View>
           <View style={styles.footerDivider} />
           <View style={styles.footerStat}>
             <Text style={styles.footerStatLabel}>Today Usage</Text>
-            <Text style={styles.footerStatValue}>83 L</Text>
+            <Text style={styles.footerStatValue}>45 L</Text>
           </View>
         </View>
       </View>

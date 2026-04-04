@@ -1,54 +1,91 @@
-import { FontAwesome } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Polyline } from 'react-native-svg';
+import { FontAwesome } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Circle, Polyline } from "react-native-svg";
 
-import { supabase } from '@/lib/supabase';
+import { supabase } from "@/lib/supabase";
 
 const colors = {
-  primary: '#3B82F6',
-  primaryDark: '#1D4ED8',
-  accent: '#22C55E',
-  text: '#0F172A',
-  subText: '#64748B',
-  card: '#FFFFFF',
-  bg: '#F8FAFF',
-  border: '#E2E8F0',
+  primary: "#3B82F6",
+  primaryDark: "#1D4ED8",
+  accent: "#22C55E",
+  text: "#0F172A",
+  subText: "#64748B",
+  card: "#FFFFFF",
+  bg: "#F8FAFF",
+  border: "#E2E8F0",
 };
 
 const fonts = {
-  regular: 'Poppins_400Regular',
-  medium: 'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold: 'Poppins_700Bold',
+  regular: "Poppins_400Regular",
+  medium: "Poppins_500Medium",
+  semibold: "Poppins_600SemiBold",
+  bold: "Poppins_700Bold",
 };
 
 function LineChart({ data, color }: { data: number[]; color: string }) {
   const { points } = useMemo(() => {
     const w = 240;
     const h = 120;
-    if (data.length === 0) return { points: '' };
-    const max = Math.max(...data);
-    const min = Math.min(...data);
-    const range = Math.max(1, max - min);
-    const stepX = data.length > 1 ? w / (data.length - 1) : 0;
+    if (data.length < 2) return { points: "" };
+
+    // Fixed 0–100 scale so chart reflects real % levels, not just relative diff
+    const MIN_VAL = 0;
+    const MAX_VAL = 100;
+    const range = MAX_VAL - MIN_VAL;
+    const stepX = w / (data.length - 1);
+
     const pts = data
       .map((v, idx) => {
         const x = idx * stepX;
-        const y = h - ((v - min) / range) * h;
+        const y = h - ((v - MIN_VAL) / range) * h;
         return `${x},${y}`;
       })
-      .join(' ');
+      .join(" ");
+
     return { points: pts };
   }, [data]);
 
   return (
     <View style={styles.chartShell}>
-      <Svg height="140" width="100%" viewBox="0 0 240 140">
-        <Polyline points={points} fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" />
-      </Svg>
+      {points ? (
+        <Svg height="140" width="100%" viewBox="0 0 240 140">
+          <Polyline
+            points={points}
+            fill="none"
+            stroke={color}
+            strokeWidth={3}
+            strokeLinecap="round"
+          />
+        </Svg>
+      ) : (
+        <View
+          style={{
+            height: 140,
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: fonts.regular,
+              fontSize: 13,
+              color: colors.subText,
+            }}
+          >
+            Not enough data points
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -93,15 +130,26 @@ function GaugeRing({ percent }: { percent: number }) {
 }
 
 function formatPHTime(isoString: string): string {
-  return new Intl.DateTimeFormat('en-PH', {
-    timeZone: 'Asia/Manila',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
     hour12: true,
   }).format(new Date(isoString));
+}
+
+function rawToPercent(raw: number): number {
+  const percent = Math.round((raw / 1023) * 100);
+  return Math.min(100, Math.max(0, percent));
+}
+
+function getStatus(percent: number): { label: string; color: string } {
+  if (percent < 60) return { label: "Dry", color: "#F97316" };
+  if (percent <= 80) return { label: "Optimal", color: "#22C55E" };
+  return { label: "Wet", color: "#3B82F6" };
 }
 
 export default function SoilMoistureScreen() {
@@ -118,34 +166,28 @@ export default function SoilMoistureScreen() {
   const fetchSensorData = async () => {
     try {
       const { data, error } = await supabase
-        .from('sensor_reading')
-        .select('value, timestamp')
-        .eq('sensor_id', 3)
-        .order('timestamp', { ascending: false })
-        .limit(7);
+        .from("sensor_reading")
+        .select("value, timestamp")
+        .eq("sensor_id", 3)
+        .order("timestamp", { ascending: false })
+        .limit(20);
 
       if (error) {
-        console.error('Error fetching soil moisture data:', error);
+        console.error("Error fetching soil moisture data:", error);
         return;
       }
 
       if (data && data.length > 0) {
         const reversed = [...data].reverse();
-        setTrendData(reversed.map(d => d.value));
-        setCurrentValue(data[0].value);
+        setTrendData(reversed.map((d) => rawToPercent(Number(d.value))));
+        setCurrentValue(rawToPercent(Number(data[0].value)));
         setLastUpdated(data[0].timestamp);
       }
     } catch (error) {
-      console.error('Error fetching soil moisture data:', error);
+      console.error("Error fetching soil moisture data:", error);
     } finally {
       setLoading(false);
     }
-  };
-
-  const getStatus = (val: number) => {
-    if (val >= 60 && val <= 80) return 'Optimal';
-    if (val < 60) return 'Low';
-    return 'High';
   };
 
   if (loading) {
@@ -159,11 +201,16 @@ export default function SoilMoistureScreen() {
     );
   }
 
+  const status = currentValue !== null ? getStatus(currentValue) : null;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
             <FontAwesome name="chevron-left" size={18} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.titleWrap}>
@@ -174,7 +221,8 @@ export default function SoilMoistureScreen() {
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}>
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Today trend</Text>
@@ -197,25 +245,27 @@ export default function SoilMoistureScreen() {
               <View>
                 <Text style={styles.metricLabel}>Current</Text>
                 <Text style={styles.metricValue}>
-                  {currentValue !== null ? `${currentValue}%` : '--'}
+                  {currentValue !== null ? `${currentValue}%` : "--"}
                 </Text>
               </View>
               <View>
                 <Text style={styles.metricLabel}>Optimal range</Text>
-                <Text style={styles.metricValue}>60 - 80%</Text>
+                <Text style={styles.metricValue}>60 – 80%</Text>
               </View>
             </View>
           </View>
 
-          {currentValue !== null && (
+          {currentValue !== null && status !== null && (
             <View style={styles.areaCard}>
               <View style={styles.areaHeader}>
                 <Text style={styles.areaName}>Latest Reading</Text>
               </View>
-              <GaugeRing percent={Math.round(currentValue)} />
+              <GaugeRing percent={currentValue} />
               <View style={styles.areaFooter}>
                 <Text style={styles.areaFootLabel}>Status</Text>
-                <Text style={styles.areaFootValue}>{getStatus(currentValue)}</Text>
+                <Text style={[styles.areaFootValue, { color: status.color }]}>
+                  {status.label}
+                </Text>
               </View>
             </View>
           )}
@@ -228,18 +278,23 @@ export default function SoilMoistureScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.bg },
   container: { flex: 1 },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { marginTop: 12, fontFamily: fonts.medium, fontSize: 16, color: colors.subText },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingText: {
+    marginTop: 12,
+    fontFamily: fonts.medium,
+    fontSize: 16,
+    color: colors.subText,
+  },
   topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: colors.card,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
@@ -247,7 +302,12 @@ const styles = StyleSheet.create({
   },
   backButton: { padding: 6 },
   titleWrap: { flex: 1, marginLeft: 8 },
-  title: { fontFamily: fonts.bold, fontSize: 18, color: colors.text, letterSpacing: 0.4 },
+  title: {
+    fontFamily: fonts.bold,
+    fontSize: 18,
+    color: colors.text,
+    letterSpacing: 0.4,
+  },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, gap: 14 },
   card: {
@@ -258,28 +318,51 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     gap: 12,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   cardTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
   cardPill: {
     fontFamily: fonts.medium,
     fontSize: 11,
     color: colors.primaryDark,
-    backgroundColor: '#E0EAFF',
+    backgroundColor: "#E0EAFF",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
   chartShell: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: "#EEF2FF",
     borderRadius: 12,
     padding: 8,
   },
-  metricsRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  metricLabel: { fontFamily: fonts.regular, fontSize: 12, color: colors.subText },
-  metricValue: { fontFamily: fonts.bold, fontSize: 18, color: colors.text, marginTop: 2 },
-  noDataText: { fontFamily: fonts.regular, fontSize: 14, color: colors.subText, textAlign: 'center', paddingVertical: 20 },
-  lastUpdatedRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  lastUpdatedText: { fontFamily: fonts.regular, fontSize: 11, color: colors.subText },
+  metricsRow: { flexDirection: "row", justifyContent: "space-between" },
+  metricLabel: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.subText,
+  },
+  metricValue: {
+    fontFamily: fonts.bold,
+    fontSize: 18,
+    color: colors.text,
+    marginTop: 2,
+  },
+  noDataText: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    color: colors.subText,
+    textAlign: "center",
+    paddingVertical: 20,
+  },
+  lastUpdatedRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  lastUpdatedText: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: colors.subText,
+  },
   areaCard: {
     backgroundColor: colors.card,
     borderRadius: 14,
@@ -288,13 +371,29 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     gap: 12,
   },
-  areaHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  areaHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   areaName: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
-  gaugeShell: { alignItems: 'center', justifyContent: 'center' },
-  gaugeCenter: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  gaugeShell: { alignItems: "center", justifyContent: "center" },
+  gaugeCenter: {
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   gaugeValue: { fontFamily: fonts.bold, fontSize: 18, color: colors.text },
-  gaugeLabel: { fontFamily: fonts.regular, fontSize: 12, color: colors.subText },
-  areaFooter: { flexDirection: 'row', justifyContent: 'space-between' },
-  areaFootLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.subText },
-  areaFootValue: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primaryDark },
+  gaugeLabel: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.subText,
+  },
+  areaFooter: { flexDirection: "row", justifyContent: "space-between" },
+  areaFootLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: colors.subText,
+  },
+  areaFootValue: { fontFamily: fonts.semibold, fontSize: 13 },
 });
