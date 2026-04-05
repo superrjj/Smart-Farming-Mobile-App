@@ -1,6 +1,6 @@
 import { FontAwesome } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -10,7 +10,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Svg, { Circle, Polyline } from "react-native-svg";
+import Svg, { Circle } from "react-native-svg";
+import { WebView } from "react-native-webview";
 
 import { supabase } from "@/lib/supabase";
 
@@ -33,44 +34,12 @@ const fonts = {
 };
 
 function LineChart({ data, color }: { data: number[]; color: string }) {
-  const { points } = useMemo(() => {
-    const w = 240;
-    const h = 120;
-    if (data.length < 2) return { points: "" };
-
-    // Fixed 0–100 scale so chart reflects real % levels, not just relative diff
-    const MIN_VAL = 0;
-    const MAX_VAL = 100;
-    const range = MAX_VAL - MIN_VAL;
-    const stepX = w / (data.length - 1);
-
-    const pts = data
-      .map((v, idx) => {
-        const x = idx * stepX;
-        const y = h - ((v - MIN_VAL) / range) * h;
-        return `${x},${y}`;
-      })
-      .join(" ");
-
-    return { points: pts };
-  }, [data]);
-
-  return (
-    <View style={styles.chartShell}>
-      {points ? (
-        <Svg height="140" width="100%" viewBox="0 0 240 140">
-          <Polyline
-            points={points}
-            fill="none"
-            stroke={color}
-            strokeWidth={3}
-            strokeLinecap="round"
-          />
-        </Svg>
-      ) : (
+  if (data.length < 2) {
+    return (
+      <View style={styles.chartShell}>
         <View
           style={{
-            height: 140,
+            height: 160,
             justifyContent: "center",
             alignItems: "center",
           }}
@@ -85,7 +54,89 @@ function LineChart({ data, color }: { data: number[]; color: string }) {
             Not enough data points
           </Text>
         </View>
-      )}
+      </View>
+    );
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: transparent; }
+      </style>
+    </head>
+    <body>
+      <div style="position:relative; width:100%; height:160px;">
+        <canvas id="c"></canvas>
+      </div>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+      <script>
+        new Chart(document.getElementById('c'), {
+          type: 'line',
+          data: {
+            labels: ${JSON.stringify(data.map((_, i) => i + 1))},
+            datasets: [{
+              data: ${JSON.stringify(data)},
+              borderColor: '${color}',
+              borderWidth: 2.5,
+              pointRadius: 0,
+              tension: 0.35,
+              fill: false
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: {
+                min: 0,
+                max: 100,
+                ticks: {
+                  stepSize: 20,
+                  color: '#64748B',
+                  font: { size: 11 },
+                  callback: function(v) { return v + '%'; }
+                },
+                grid: {
+                  color: 'rgba(100,116,139,0.2)',
+                  lineWidth: 1
+                },
+                border: { dash: [4, 4], display: false }
+              },
+              x: {
+                ticks: {
+                  maxTicksLimit: 5,
+                  color: '#64748B',
+                  font: { size: 10 },
+                  maxRotation: 0
+                },
+                grid: {
+                  color: 'rgba(100,116,139,0.1)',
+                  lineWidth: 1
+                },
+                border: { display: false }
+              }
+            }
+          }
+        });
+      </script>
+    </body>
+    </html>
+  `;
+
+  return (
+    <View style={[styles.chartShell, { height: 160 }]}>
+      <WebView
+        source={{ html }}
+        style={{ flex: 1, backgroundColor: "transparent" }}
+        scrollEnabled={false}
+        javaScriptEnabled={true}
+        originWhitelist={["*"]}
+      />
     </View>
   );
 }
@@ -141,13 +192,15 @@ function formatPHTime(isoString: string): string {
   }).format(new Date(isoString));
 }
 
+// ✅ FIXED: matches admin conversion — higher raw ADC value = drier soil
 function rawToPercent(raw: number): number {
-  const percent = Math.round((raw / 1023) * 100);
+  const percent = Math.round(((1023 - raw) / 1023) * 100);
   return Math.min(100, Math.max(0, percent));
 }
 
+// ✅ FIXED: thresholds now match admin (40/80, not 60/80)
 function getStatus(percent: number): { label: string; color: string } {
-  if (percent < 60) return { label: "Dry", color: "#F97316" };
+  if (percent < 40) return { label: "Dry", color: "#F97316" };
   if (percent <= 80) return { label: "Optimal", color: "#22C55E" };
   return { label: "Wet", color: "#3B82F6" };
 }
@@ -249,8 +302,9 @@ export default function SoilMoistureScreen() {
                 </Text>
               </View>
               <View>
+                {/* ✅ FIXED: updated to match admin optimal range */}
                 <Text style={styles.metricLabel}>Optimal range</Text>
-                <Text style={styles.metricValue}>60 – 80%</Text>
+                <Text style={styles.metricValue}>40 – 80%</Text>
               </View>
             </View>
           </View>

@@ -13,12 +13,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// ── Config ────────────────────────────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get("window");
 
-const API =
-  (process.env.EXPO_PUBLIC_API_URL as string | undefined)?.replace(/\/$/, "") ??
-  "http://localhost:5000";
+const LOCATION = { name: "Tarlac Province", lat: 15.4755, lon: 120.5963 };
 
 const colors = {
   primary: "#22C55E",
@@ -42,13 +39,6 @@ const fonts = {
   bold: "Poppins_700Bold",
 };
 
-// ── Regions ───────────────────────────────────────────────────────────────────
-const REGIONS = [
-  { name: "Luzon", lat: 15.4802, lon: 120.5979, color: "#3B82F6" },
-  { name: "Visayas", lat: 10.7202, lon: 122.5621, color: "#22C55E" },
-  { name: "Mindanao", lat: 7.8731, lon: 124.9213, color: "#F97316" },
-];
-
 const MONTH_LABELS = [
   "Jan",
   "Feb",
@@ -63,6 +53,7 @@ const MONTH_LABELS = [
   "Nov",
   "Dec",
 ];
+
 const TYPHOON_MONTHS = ["Jun", "Jul", "Aug", "Sep", "Oct", "Nov"];
 
 // ── Derivation helpers ────────────────────────────────────────────────────────
@@ -96,18 +87,8 @@ interface MonthData {
   irrigationNeed: number;
 }
 
-interface RegionMonthly {
-  region: string;
-  color: string;
-  months: MonthData[];
-}
-
 // ── Data fetch ────────────────────────────────────────────────────────────────
-const fetchRegionData = async (
-  lat: number,
-  lon: number,
-  year: number,
-): Promise<MonthData[]> => {
+const fetchLocationData = async (year: number): Promise<MonthData[]> => {
   const now = new Date();
   const isCurrentYear = year === now.getFullYear();
   const endDay = isCurrentYear
@@ -125,7 +106,7 @@ const fetchRegionData = async (
       irrigationNeed: 0,
     }));
 
-  const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${start}&end_date=${endDay}&daily=temperature_2m_mean,relative_humidity_2m_mean,precipitation_sum&timezone=Asia%2FManila`;
+  const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${LOCATION.lat}&longitude=${LOCATION.lon}&start_date=${start}&end_date=${endDay}&daily=temperature_2m_mean,relative_humidity_2m_mean,precipitation_sum&timezone=Asia%2FManila`;
   const res = await fetch(url);
   const json = await res.json();
   const {
@@ -184,178 +165,12 @@ const fetchRegionData = async (
   });
 };
 
-// ── Mini Bar Chart ────────────────────────────────────────────────────────────
-const MiniBarChart = ({
-  data,
-  regions,
-  dataKey,
-  height = 120,
-}: {
-  data: any[];
-  regions: typeof REGIONS;
-  dataKey: string;
-  height?: number;
-}) => {
-  const BAR_W = 6;
-  const GAP = 2;
-  const GROUP_GAP = 8;
-  const totalBars = data.length * (regions.length * (BAR_W + GAP) + GROUP_GAP);
-  const maxVal = Math.max(
-    ...data.flatMap((d) => regions.map((r) => d[r.name] ?? 0)),
-    1,
-  );
-
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View
-        style={{
-          width: Math.max(totalBars, SCREEN_W - 64),
-          height: height + 24,
-        }}
-      >
-        {/* Y grid lines */}
-        {[0.25, 0.5, 0.75, 1].map((pct) => (
-          <View
-            key={pct}
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: height * (1 - pct),
-              height: 1,
-              backgroundColor: "#F1F5F9",
-            }}
-          />
-        ))}
-        {/* Bars */}
-        {data.map((d, di) => (
-          <View
-            key={di}
-            style={{
-              position: "absolute",
-              bottom: 20,
-              left: di * (regions.length * (BAR_W + GAP) + GROUP_GAP),
-              flexDirection: "row",
-              alignItems: "flex-end",
-              gap: GAP,
-            }}
-          >
-            {regions.map((r) => {
-              const val = d[r.name] ?? 0;
-              const barH = Math.max(2, (val / maxVal) * height);
-              return (
-                <View
-                  key={r.name}
-                  style={{
-                    width: BAR_W,
-                    height: barH,
-                    backgroundColor: r.color,
-                    borderRadius: 2,
-                  }}
-                />
-              );
-            })}
-          </View>
-        ))}
-        {/* X labels */}
-        {data.map((d, di) => (
-          <Text
-            key={di}
-            style={{
-              position: "absolute",
-              bottom: 0,
-              left: di * (regions.length * (BAR_W + GAP) + GROUP_GAP) - 4,
-              fontSize: 9,
-              color: colors.grayText,
-              fontFamily: fonts.regular,
-              width: 28,
-              textAlign: "center",
-            }}
-          >
-            {d.month}
-          </Text>
-        ))}
-      </View>
-    </ScrollView>
-  );
-};
-
-// ── Area Chart (simple SVG-like via Views) ────────────────────────────────────
-const SimpleLineChart = ({
-  data,
-  lineKey,
-  color,
-  height = 100,
-}: {
-  data: { month: string; [key: string]: any }[];
-  lineKey: string;
-  color: string;
-  height?: number;
-}) => {
-  const W = SCREEN_W - 80;
-  const maxVal = Math.max(...data.map((d) => d[lineKey] ?? 0), 1);
-  const pts = data.map((d, i) => ({
-    x: (i / (data.length - 1)) * W,
-    y: height - ((d[lineKey] ?? 0) / maxVal) * height,
-  }));
-
-  return (
-    <View style={{ height, width: W }}>
-      {pts.map((pt, i) => {
-        if (i === 0) return null;
-        const prev = pts[i - 1];
-        const dx = pt.x - prev.x;
-        const dy = pt.y - prev.y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-        return (
-          <View
-            key={i}
-            style={{
-              position: "absolute",
-              left: prev.x,
-              top: prev.y,
-              width: len,
-              height: 2,
-              backgroundColor: color,
-              transformOrigin: "left center",
-              transform: [{ rotate: `${angle}deg` }],
-            }}
-          />
-        );
-      })}
-      {pts.map((pt, i) => (
-        <View
-          key={i}
-          style={{
-            position: "absolute",
-            left: pt.x - 3,
-            top: pt.y - 3,
-            width: 6,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: color,
-          }}
-        />
-      ))}
-    </View>
-  );
-};
-
 // ── Progress Bar ──────────────────────────────────────────────────────────────
-const ProgressBar = ({
-  value,
-  color,
-  bg = "#F1F5F9",
-}: {
-  value: number;
-  color: string;
-  bg?: string;
-}) => (
+const ProgressBar = ({ value, color }: { value: number; color: string }) => (
   <View
     style={{
       height: 6,
-      backgroundColor: bg,
+      backgroundColor: "#F1F5F9",
       borderRadius: 3,
       overflow: "hidden",
       flex: 1,
@@ -396,24 +211,121 @@ const StatCard = ({
   </View>
 );
 
-// ── Chart Tab ─────────────────────────────────────────────────────────────────
-type ChartKey = "rainfall" | "moisture" | "scarcity" | "irrigation";
+// ── Chart types ───────────────────────────────────────────────────────────────
+type ChartKey =
+  | "rainfall"
+  | "moisture"
+  | "scarcity"
+  | "irrigation"
+  | "temp"
+  | "humidity";
 
-const CHART_TABS: { key: ChartKey; label: string; short: string }[] = [
-  { key: "rainfall", label: "Rainfall (mm)", short: "Rain" },
-  { key: "moisture", label: "Soil Moisture (%)", short: "Moisture" },
-  { key: "scarcity", label: "Water Scarcity Index", short: "Scarcity" },
-  { key: "irrigation", label: "Irrigation Need (mm)", short: "Irrigate" },
+const CHART_TABS: { key: ChartKey; label: string }[] = [
+  { key: "rainfall", label: "Rainfall" },
+  { key: "moisture", label: "Moisture" },
+  { key: "temp", label: "Temp" },
+  { key: "humidity", label: "Humidity" },
+  { key: "scarcity", label: "Scarcity" },
+  { key: "irrigation", label: "Irrigate" },
 ];
 
-const CHART_NOTES: Record<ChartKey, string> = {
-  rainfall:
-    "💧 Mindanao receives consistent rainfall year-round. Luzon is driest in Feb–Apr.",
-  moisture: "🌱 Soil moisture proxy derived from rainfall and temperature.",
-  scarcity:
-    "⚠️ Higher index = more scarce. Luzon faces highest scarcity in Mar–Apr.",
-  irrigation:
-    "💦 Irrigation need = deficit from the 100mm/month requirement. Plan reserves.",
+// ── Bar Chart ─────────────────────────────────────────────────────────────────
+const BarChart = ({
+  data,
+  color,
+  height = 130,
+}: {
+  data: { month: string; value: number }[];
+  color: string;
+  height?: number;
+}) => {
+  const maxVal = Math.max(...data.map((d) => d.value), 1);
+  const BAR_W = Math.max(20, (SCREEN_W - 64) / data.length - 4);
+
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <View
+        style={{
+          width: Math.max(SCREEN_W - 64, data.length * (BAR_W + 4)),
+          height: height + 28,
+        }}
+      >
+        {[0.25, 0.5, 0.75, 1].map((pct) => (
+          <View
+            key={pct}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: height * (1 - pct),
+              height: 1,
+              backgroundColor: "#E2E8F0",
+            }}
+          />
+        ))}
+        {[0.25, 0.5, 0.75, 1].map((pct) => (
+          <Text
+            key={pct}
+            style={{
+              position: "absolute",
+              right: 0,
+              top: height * (1 - pct) - 8,
+              fontSize: 8,
+              color: colors.grayText,
+              fontFamily: fonts.regular,
+            }}
+          >
+            {Math.round(maxVal * pct)}
+          </Text>
+        ))}
+        {data.map((d, i) => {
+          const barH = Math.max(2, (d.value / maxVal) * height);
+          const isTyphoon = TYPHOON_MONTHS.includes(d.month);
+          return (
+            <View
+              key={i}
+              style={{
+                position: "absolute",
+                bottom: 20,
+                left: i * (BAR_W + 4),
+                width: BAR_W,
+                alignItems: "center",
+              }}
+            >
+              <View
+                style={{
+                  width: BAR_W,
+                  height: barH,
+                  backgroundColor: isTyphoon ? colors.orange : color,
+                  borderRadius: 4,
+                  opacity: 0.85,
+                }}
+              />
+            </View>
+          );
+        })}
+        {data.map((d, i) => (
+          <Text
+            key={i}
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: i * (BAR_W + 4),
+              width: BAR_W,
+              textAlign: "center",
+              fontSize: 9,
+              color: TYPHOON_MONTHS.includes(d.month)
+                ? colors.orange
+                : colors.grayText,
+              fontFamily: fonts.regular,
+            }}
+          >
+            {d.month}
+          </Text>
+        ))}
+      </View>
+    </ScrollView>
+  );
 };
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
@@ -423,7 +335,7 @@ export default function SeasonalSummaryScreen() {
   const currentMonth = new Date().getMonth();
 
   const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [regionData, setRegionData] = useState<RegionMonthly[]>([]);
+  const [months, setMonths] = useState<MonthData[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeChart, setActiveChart] = useState<ChartKey>("rainfall");
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -435,23 +347,16 @@ export default function SeasonalSummaryScreen() {
     currentYear - 3,
   ];
   const isCurrentYear = selectedYear === currentYear;
-  const visibleMonthCount = isCurrentYear ? currentMonth + 1 : 12;
+  const visibleCount = isCurrentYear ? currentMonth + 1 : 12;
+  const visibleMonths = months.slice(0, visibleCount);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       fadeAnim.setValue(0);
       try {
-        const results = await Promise.all(
-          REGIONS.map((r) => fetchRegionData(r.lat, r.lon, selectedYear)),
-        );
-        setRegionData(
-          REGIONS.map((r, i) => ({
-            region: r.name,
-            color: r.color,
-            months: results[i],
-          })),
-        );
+        const data = await fetchLocationData(selectedYear);
+        setMonths(data);
       } catch (e) {
         console.error("Failed to load seasonal data", e);
       } finally {
@@ -466,68 +371,114 @@ export default function SeasonalSummaryScreen() {
     load();
   }, [selectedYear]);
 
-  const luzon = regionData.find((r) => r.region === "Luzon");
-  const mindanao = regionData.find((r) => r.region === "Mindanao");
-  const visibleLuzonMonths = luzon?.months.slice(0, visibleMonthCount) ?? [];
+  const activeData = visibleMonths.map((m) => ({
+    month: m.month,
+    value:
+      activeChart === "rainfall"
+        ? m.rainfall
+        : activeChart === "moisture"
+          ? m.soilMoistureProxy
+          : activeChart === "scarcity"
+            ? m.scarcityIndex
+            : activeChart === "irrigation"
+              ? m.irrigationNeed
+              : activeChart === "temp"
+                ? m.avgTemp
+                : m.avgHumidity,
+  }));
 
-  const luzonAvgScarcity = visibleLuzonMonths.length
+  const activeColor =
+    activeChart === "rainfall"
+      ? colors.blue
+      : activeChart === "moisture"
+        ? colors.primary
+        : activeChart === "scarcity"
+          ? colors.red
+          : activeChart === "irrigation"
+            ? colors.blue
+            : activeChart === "temp"
+              ? colors.orange
+              : "#06B6D4";
+
+  const validMonths = visibleMonths.filter((m) => m.scarcityIndex > 0);
+  const avgScarcity = validMonths.length
     ? Math.round(
-        visibleLuzonMonths
-          .filter((m) => m.scarcityIndex > 0)
-          .reduce((s, m) => s + m.scarcityIndex, 0) /
-          (visibleLuzonMonths.filter((m) => m.scarcityIndex > 0).length || 1),
+        validMonths.reduce((s, m) => s + m.scarcityIndex, 0) /
+          validMonths.length,
       )
     : 0;
-  const luzonDryMonths = visibleLuzonMonths.filter(
-    (m) => m.scarcityIndex > 60,
-  ).length;
-  const luzonPeakIrrigation = visibleLuzonMonths
+  const dryMonths = visibleMonths.filter((m) => m.scarcityIndex > 60).length;
+  const peakIrrigation = visibleMonths
     .filter((m) => m.irrigationNeed > 0)
     .reduce<MonthData | null>(
       (a, b) => (!a || b.irrigationNeed > a.irrigationNeed ? b : a),
       null,
     );
-
-  const chartData = MONTH_LABELS.slice(0, visibleMonthCount).map((month, i) => {
-    const row: any = { month };
-    regionData.forEach((r) => {
-      const m = r.months[i];
-      if (!m || (isCurrentYear && i > currentMonth)) return;
-      if (activeChart === "rainfall") row[r.region] = m.rainfall;
-      if (activeChart === "moisture") row[r.region] = m.soilMoistureProxy;
-      if (activeChart === "scarcity") row[r.region] = m.scarcityIndex;
-      if (activeChart === "irrigation") row[r.region] = m.irrigationNeed;
-    });
-    return row;
-  });
+  const avgTemp = visibleMonths.filter((m) => m.avgTemp > 0).length
+    ? Math.round(
+        (visibleMonths
+          .filter((m) => m.avgTemp > 0)
+          .reduce((s, m) => s + m.avgTemp, 0) /
+          visibleMonths.filter((m) => m.avgTemp > 0).length) *
+          10,
+      ) / 10
+    : 0;
 
   const scarcityColor =
-    luzonAvgScarcity > 50
+    avgScarcity > 50
       ? colors.red
-      : luzonAvgScarcity > 30
+      : avgScarcity > 30
         ? colors.amber
         : colors.primary;
 
+  const chartNote: Record<ChartKey, string> = {
+    rainfall:
+      "🌧️ Orange bars indicate typhoon-season months (Jun–Nov). Tarlac is driest Feb–Apr.",
+    moisture:
+      "🌱 Estimated soil moisture from rainfall and temperature. Higher = wetter soil.",
+    scarcity:
+      "⚠️ Higher = more water scarce. Tarlac faces highest scarcity in Mar–Apr.",
+    irrigation:
+      "💦 Estimated supplemental water needed beyond natural rainfall (mm/month).",
+    temp: "🌡️ Average daily temperature. String beans prefer 18–30°C for optimal growth.",
+    humidity:
+      "💧 Average relative humidity. Ideal range for string beans is 55–75%.",
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
+      {/* ── Header (title + back only) ── */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <FontAwesome name="chevron-left" size={16} color={colors.dark} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Seasonal Summary</Text>
-          <Text style={styles.headerSub}>Philippine Regional Climate</Text>
+        <View style={styles.headerTop}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
+            <FontAwesome name="chevron-left" size={16} color={colors.dark} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>Seasonal Summary</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+                marginTop: 1,
+              }}
+            >
+              <FontAwesome name="map-marker" size={11} color={colors.blue} />
+              <Text style={styles.headerSub}>{LOCATION.name}</Text>
+            </View>
+          </View>
         </View>
-        {/* Year picker */}
+      </View>
+
+      {/* ── Year Chips — outside header, below it ── */}
+      <View style={styles.yearBar}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={styles.yearScroll}
-          contentContainerStyle={styles.yearScrollContent}
+          contentContainerStyle={styles.yearRow}
         >
           {yearOptions.map((y) => (
             <TouchableOpacity
@@ -541,7 +492,7 @@ export default function SeasonalSummaryScreen() {
               <Text
                 style={[
                   styles.yearChipText,
-                  selectedYear === y && styles.yearChipTextActive,
+                  selectedYear === y && { color: colors.white },
                 ]}
               >
                 {y}
@@ -554,7 +505,9 @@ export default function SeasonalSummaryScreen() {
       {loading ? (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loaderText}>Fetching climate data…</Text>
+          <Text style={styles.loaderText}>
+            Fetching {selectedYear} climate data…
+          </Text>
         </View>
       ) : (
         <Animated.ScrollView
@@ -565,7 +518,7 @@ export default function SeasonalSummaryScreen() {
           {/* Current year notice */}
           {isCurrentYear && (
             <View style={styles.noticeBanner}>
-              <FontAwesome name="info-circle" size={13} color="#3B82F6" />
+              <FontAwesome name="info-circle" size={13} color={colors.blue} />
               <Text style={styles.noticeText}>
                 Showing {currentYear} data — {MONTH_LABELS[currentMonth]} is the
                 most recent complete month.
@@ -577,14 +530,13 @@ export default function SeasonalSummaryScreen() {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={styles.statsScroll}
-            contentContainerStyle={styles.statsScrollContent}
+            contentContainerStyle={{ gap: 10 }}
           >
             <StatCard
               icon="warning"
               iconColor={scarcityColor}
-              label="Luzon Scarcity"
-              value={`${luzonAvgScarcity}/100`}
+              label="Water Scarcity"
+              value={`${avgScarcity}/100`}
               sub={
                 isCurrentYear
                   ? `Jan–${MONTH_LABELS[currentMonth]} avg`
@@ -595,7 +547,7 @@ export default function SeasonalSummaryScreen() {
               icon="sun-o"
               iconColor={colors.orange}
               label="Dry Months"
-              value={`${luzonDryMonths}`}
+              value={`${dryMonths}`}
               sub="Scarcity >60"
             />
             <StatCard
@@ -603,48 +555,36 @@ export default function SeasonalSummaryScreen() {
               iconColor={colors.blue}
               label="Peak Irrigation"
               value={
-                luzonPeakIrrigation
-                  ? `${luzonPeakIrrigation.irrigationNeed}mm`
-                  : "—"
+                peakIrrigation ? `${peakIrrigation.irrigationNeed}mm` : "—"
               }
-              sub={luzonPeakIrrigation?.month ?? "—"}
+              sub={peakIrrigation?.month ?? "—"}
             />
             <StatCard
-              icon="cloud"
-              iconColor="#6366F1"
-              label="Typhoon Season"
-              value="Jun–Nov"
-              sub="Affects Luzon most"
+              icon="thermometer"
+              iconColor={colors.orange}
+              label="Avg Temp"
+              value={`${avgTemp}°C`}
+              sub={
+                isCurrentYear
+                  ? `Jan–${MONTH_LABELS[currentMonth]}`
+                  : "Annual avg"
+              }
             />
           </ScrollView>
 
-          {/* Regional Chart Card */}
+          {/* Main Chart Card */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>
-              Regional Comparison — {selectedYear}
+              Monthly Climate — {selectedYear}
             </Text>
             <Text style={styles.cardSub}>
-              Luzon · Visayas · Mindanao — Open-Meteo data
+              {LOCATION.name} · Open-Meteo archive data
             </Text>
 
-            {/* Region legend */}
-            <View style={styles.legend}>
-              {REGIONS.map((r) => (
-                <View key={r.name} style={styles.legendItem}>
-                  <View
-                    style={[styles.legendDot, { backgroundColor: r.color }]}
-                  />
-                  <Text style={styles.legendText}>{r.name}</Text>
-                </View>
-              ))}
-            </View>
-
-            {/* Chart tabs */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              style={styles.tabScroll}
-              contentContainerStyle={styles.tabScrollContent}
+              contentContainerStyle={{ gap: 6, marginBottom: 12 }}
             >
               {CHART_TABS.map((tab) => (
                 <TouchableOpacity
@@ -652,121 +592,63 @@ export default function SeasonalSummaryScreen() {
                   onPress={() => setActiveChart(tab.key)}
                   style={[
                     styles.tab,
-                    activeChart === tab.key && styles.tabActive,
+                    activeChart === tab.key && { backgroundColor: activeColor },
                   ]}
                 >
                   <Text
                     style={[
                       styles.tabText,
-                      activeChart === tab.key && styles.tabTextActive,
+                      activeChart === tab.key && { color: colors.white },
                     ]}
                   >
-                    {tab.short}
+                    {tab.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
-            <MiniBarChart
-              data={chartData}
-              regions={REGIONS}
-              dataKey={activeChart}
-              height={130}
-            />
+            <BarChart data={activeData} color={activeColor} height={130} />
+
+            {activeChart === "rainfall" && (
+              <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                >
+                  <View
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 2,
+                      backgroundColor: colors.blue,
+                    }}
+                  />
+                  <Text style={styles.legendText}>Normal</Text>
+                </View>
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                >
+                  <View
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 2,
+                      backgroundColor: colors.orange,
+                    }}
+                  />
+                  <Text style={styles.legendText}>Typhoon season</Text>
+                </View>
+              </View>
+            )}
 
             <View style={styles.chartNote}>
-              <Text style={styles.chartNoteText}>
-                {CHART_NOTES[activeChart]}
-              </Text>
+              <Text style={styles.chartNoteText}>{chartNote[activeChart]}</Text>
             </View>
           </View>
 
-          {/* Mindanao → Luzon Impact */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Mindanao → Luzon Impact</Text>
-            <Text style={styles.cardSub}>
-              Typhoon paths affect Luzon rainfall 3–7 days later
-            </Text>
-
-            <View style={styles.legend}>
-              <View style={styles.legendItem}>
-                <View
-                  style={[styles.legendDot, { backgroundColor: colors.blue }]}
-                />
-                <Text style={styles.legendText}>Luzon Rainfall</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View
-                  style={[styles.legendDot, { backgroundColor: colors.orange }]}
-                />
-                <Text style={styles.legendText}>Mindanao Rainfall</Text>
-              </View>
-            </View>
-
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <SimpleLineChart
-                data={MONTH_LABELS.slice(0, visibleMonthCount).map(
-                  (month, i) => ({
-                    month,
-                    val: luzon?.months[i].rainfall ?? 0,
-                  }),
-                )}
-                lineKey="val"
-                color={colors.blue}
-                height={90}
-              />
-            </View>
-
-            <View style={styles.impactGrid}>
-              {[
-                {
-                  emoji: "🌀",
-                  title: "Typhoon Season (Jun–Nov)",
-                  text: "Typhoons from Pacific intensify near Mindanao before hitting Luzon.",
-                  bg: "#EEF2FF",
-                  border: "#C7D2FE",
-                  titleColor: "#4338CA",
-                },
-                {
-                  emoji: "💧",
-                  title: "Water Scarcity Lag Effect",
-                  text: "Mindanao drought shifts ITCZ, reducing Luzon rainfall 2–4 weeks later.",
-                  bg: "#FFFBEB",
-                  border: "#FDE68A",
-                  titleColor: "#92400E",
-                },
-                {
-                  emoji: "🌱",
-                  title: "String Bean Implication",
-                  text: "Luzon dry season (Feb–Apr): pre-plan irrigation reserves for March.",
-                  bg: "#F0FDF4",
-                  border: "#BBF7D0",
-                  titleColor: "#166534",
-                },
-              ].map((item) => (
-                <View
-                  key={item.title}
-                  style={[
-                    styles.impactCard,
-                    { backgroundColor: item.bg, borderColor: item.border },
-                  ]}
-                >
-                  <Text style={styles.impactEmoji}>{item.emoji}</Text>
-                  <Text
-                    style={[styles.impactTitle, { color: item.titleColor }]}
-                  >
-                    {item.title}
-                  </Text>
-                  <Text style={styles.impactText}>{item.text}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {/* Monthly Scarcity Table — Luzon */}
+          {/* Monthly Water Scarcity Table */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>
-              Monthly Water Scarcity — Luzon {selectedYear}
+              Monthly Water Scarcity — {selectedYear}
             </Text>
             {isCurrentYear && (
               <Text style={styles.cardSub}>
@@ -774,7 +656,6 @@ export default function SeasonalSummaryScreen() {
               </Text>
             )}
 
-            {/* Table header */}
             <View style={styles.tableHeader}>
               <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Month</Text>
               <Text
@@ -806,7 +687,7 @@ export default function SeasonalSummaryScreen() {
               </Text>
             </View>
 
-            {visibleLuzonMonths.map((m, i) => {
+            {visibleMonths.map((m, i) => {
               const scLevel =
                 m.scarcityIndex > 60
                   ? "High"
@@ -825,8 +706,8 @@ export default function SeasonalSummaryScreen() {
                   key={i}
                   style={[
                     styles.tableRow,
-                    isCurrentMonthRow && styles.tableRowHighlight,
                     i % 2 === 1 && styles.tableRowAlt,
+                    isCurrentMonthRow && styles.tableRowHighlight,
                   ]}
                 >
                   <View style={{ flex: 1 }}>
@@ -890,68 +771,102 @@ export default function SeasonalSummaryScreen() {
             })}
           </View>
 
-          {/* Soil Moisture Breakdown */}
+          {/* Soil Moisture Card */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Soil Moisture by Region</Text>
+            <Text style={styles.cardTitle}>Soil Moisture — {selectedYear}</Text>
             <Text style={styles.cardSub}>
-              Derived from rainfall and temperature data
+              Estimated from rainfall and temperature
             </Text>
-            <View style={{ gap: 12, marginTop: 8 }}>
-              {regionData.map((r) => {
-                const visible = r.months
-                  .slice(0, visibleMonthCount)
-                  .filter((m) => m.soilMoistureProxy > 0);
-                const avg = visible.length
-                  ? Math.round(
-                      visible.reduce((s, m) => s + m.soilMoistureProxy, 0) /
-                        visible.length,
-                    )
-                  : 0;
-                const peak = visible.reduce<MonthData | null>(
-                  (a, b) =>
-                    !a || b.soilMoistureProxy > a.soilMoistureProxy ? b : a,
-                  null,
-                );
-                const low = visible.reduce<MonthData | null>(
-                  (a, b) =>
-                    !a || b.soilMoistureProxy < a.soilMoistureProxy ? b : a,
-                  null,
-                );
-                return (
-                  <View key={r.region} style={styles.regionMoistureRow}>
-                    <View
-                      style={[styles.regionDot, { backgroundColor: r.color }]}
-                    />
-                    <View style={{ flex: 1 }}>
+            <View style={{ gap: 10, marginTop: 4 }}>
+              {visibleMonths
+                .filter((m) => m.soilMoistureProxy > 0)
+                .map((m, i) => {
+                  const moistureColor =
+                    m.soilMoistureProxy >= 60
+                      ? colors.primary
+                      : m.soilMoistureProxy >= 40
+                        ? colors.amber
+                        : colors.red;
+                  return (
+                    <View key={i} style={{ gap: 4 }}>
                       <View
                         style={{
                           flexDirection: "row",
                           justifyContent: "space-between",
-                          marginBottom: 4,
                         }}
                       >
-                        <Text style={styles.regionName}>{r.region}</Text>
-                        <Text style={[styles.regionAvg, { color: r.color }]}>
-                          {avg}% avg
+                        <Text style={styles.tableCell}>{m.month}</Text>
+                        <Text
+                          style={[styles.tableCell, { color: moistureColor }]}
+                        >
+                          {m.soilMoistureProxy}%
                         </Text>
                       </View>
-                      <ProgressBar value={avg} color={r.color} />
-                      <View
-                        style={{ flexDirection: "row", gap: 12, marginTop: 4 }}
-                      >
-                        <Text style={styles.regionMeta}>
-                          Peak: {peak?.month ?? "—"} (
-                          {peak?.soilMoistureProxy ?? 0}%)
-                        </Text>
-                        <Text style={styles.regionMeta}>
-                          Low: {low?.month ?? "—"} (
-                          {low?.soilMoistureProxy ?? 0}%)
-                        </Text>
-                      </View>
+                      <ProgressBar
+                        value={m.soilMoistureProxy}
+                        color={moistureColor}
+                      />
                     </View>
-                  </View>
-                );
-              })}
+                  );
+                })}
+            </View>
+          </View>
+
+          {/* Farming Tips Card */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Farming Tips for Tarlac</Text>
+            <Text style={styles.cardSub}>String bean cultivation guidance</Text>
+            <View style={{ gap: 8 }}>
+              {[
+                {
+                  emoji: "🌱",
+                  title: "Best Planting Months",
+                  text: "Oct–Dec and Feb–Apr offer the most stable conditions. Avoid peak typhoon months (Aug–Sep).",
+                  bg: "#F0FDF4",
+                  border: "#BBF7D0",
+                  titleColor: "#166534",
+                },
+                {
+                  emoji: "💧",
+                  title: "Dry Season Preparation (Feb–Apr)",
+                  text: "Pre-plan irrigation reserves. Target 20–25mm/week. Use mulching to retain soil moisture.",
+                  bg: "#FFFBEB",
+                  border: "#FDE68A",
+                  titleColor: "#92400E",
+                },
+                {
+                  emoji: "🌀",
+                  title: "Typhoon Season (Jun–Nov)",
+                  text: "Use raised beds and clear drainage channels. Avoid planting Aug–Sep when typhoon risk is highest.",
+                  bg: "#EEF2FF",
+                  border: "#C7D2FE",
+                  titleColor: "#4338CA",
+                },
+                {
+                  emoji: "🌡️",
+                  title: "Heat Stress Management",
+                  text: "Tarlac summers can exceed 35°C. Use early morning irrigation and shade netting in April–May.",
+                  bg: "#FEF2F2",
+                  border: "#FCA5A5",
+                  titleColor: "#991B1B",
+                },
+              ].map((item) => (
+                <View
+                  key={item.title}
+                  style={[
+                    styles.impactCard,
+                    { backgroundColor: item.bg, borderColor: item.border },
+                  ]}
+                >
+                  <Text style={styles.impactEmoji}>{item.emoji}</Text>
+                  <Text
+                    style={[styles.impactTitle, { color: item.titleColor }]}
+                  >
+                    {item.title}
+                  </Text>
+                  <Text style={styles.impactText}>{item.text}</Text>
+                </View>
+              ))}
             </View>
           </View>
 
@@ -966,46 +881,62 @@ export default function SeasonalSummaryScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.surface },
 
-  // Header
+  // ── Header (title + back only — no year chips) ──
   header: {
     backgroundColor: colors.white,
     borderBottomWidth: 1,
     borderBottomColor: colors.grayBorder,
+    paddingTop: 12,
+    paddingBottom: 12,
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  backButton: { padding: 6, alignSelf: "flex-start" },
-  headerCenter: { marginTop: 2, marginBottom: 8 },
-  headerTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.dark },
+  headerTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  backButton: { padding: 6 },
+  headerTitle: { fontFamily: fonts.semibold, fontSize: 16, color: colors.dark },
   headerSub: {
     fontFamily: fonts.regular,
     fontSize: 11,
     color: colors.grayText,
     marginTop: 1,
   },
-  yearScroll: { marginHorizontal: -4 },
-  yearScrollContent: { flexDirection: "row", gap: 6, paddingHorizontal: 4 },
+
+  // ── Year chips bar — separate from header ──
+  yearBar: {
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.grayBorder,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  yearRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
   yearChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.grayBorder,
     backgroundColor: colors.surface,
   },
   yearChipActive: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   yearChipText: {
     fontFamily: fonts.medium,
     fontSize: 12,
     color: colors.grayText,
   },
-  yearChipTextActive: { color: colors.white },
 
-  // Loader
+  // ── Loader ──
   loader: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   loaderText: {
     fontFamily: fonts.regular,
@@ -1013,11 +944,11 @@ const styles = StyleSheet.create({
     color: colors.grayText,
   },
 
-  // Scroll
+  // ── Scroll ──
   scroll: { flex: 1 },
   scrollContent: { padding: 16, gap: 14 },
 
-  // Notice
+  // ── Notice ──
   noticeBanner: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1036,9 +967,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Stat cards
-  statsScroll: { marginHorizontal: -16 },
-  statsScrollContent: { paddingHorizontal: 16, gap: 10 },
+  // ── Stat cards ──
   statCard: {
     backgroundColor: colors.cardBg,
     borderRadius: 14,
@@ -1069,7 +998,7 @@ const styles = StyleSheet.create({
   },
   statSub: { fontFamily: fonts.regular, fontSize: 10, color: colors.grayText },
 
-  // Cards
+  // ── Cards ──
   card: {
     backgroundColor: colors.cardBg,
     borderRadius: 16,
@@ -1090,30 +1019,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // Legend
-  legend: { flexDirection: "row", gap: 12, marginBottom: 12, flexWrap: "wrap" },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: {
-    fontFamily: fonts.regular,
-    fontSize: 11,
-    color: colors.grayText,
-  },
-
-  // Tabs
-  tabScroll: { marginHorizontal: -4, marginBottom: 12 },
-  tabScrollContent: { flexDirection: "row", gap: 6, paddingHorizontal: 4 },
+  // ── Chart tabs ──
   tab: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 20,
     backgroundColor: "#F1F5F9",
   },
-  tabActive: { backgroundColor: colors.primary },
   tabText: { fontFamily: fonts.medium, fontSize: 12, color: colors.grayText },
-  tabTextActive: { color: colors.white },
-
-  // Chart note
+  legendText: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    color: colors.grayText,
+  },
   chartNote: {
     marginTop: 12,
     backgroundColor: "#F8FAFC",
@@ -1127,19 +1045,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
-  // Impact grid
-  impactGrid: { gap: 8, marginTop: 12 },
-  impactCard: { borderRadius: 10, borderWidth: 1, padding: 10 },
-  impactEmoji: { fontSize: 16, marginBottom: 4 },
-  impactTitle: { fontFamily: fonts.semibold, fontSize: 12, marginBottom: 3 },
-  impactText: {
-    fontFamily: fonts.regular,
-    fontSize: 11,
-    color: "#64748B",
-    lineHeight: 16,
-  },
-
-  // Table
+  // ── Table ──
   tableHeader: {
     flexDirection: "row",
     backgroundColor: "#0F172A",
@@ -1170,23 +1076,17 @@ const styles = StyleSheet.create({
     color: colors.grayText,
   },
   currentTag: { fontFamily: fonts.regular, fontSize: 9, color: colors.blue },
-
-  // Badge
   badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
   badgeText: { fontFamily: fonts.semibold, fontSize: 9 },
 
-  // Region moisture
-  regionMoistureRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  regionDot: { width: 10, height: 10, borderRadius: 5, marginTop: 5 },
-  regionName: { fontFamily: fonts.semibold, fontSize: 12, color: colors.dark },
-  regionAvg: { fontFamily: fonts.semibold, fontSize: 12 },
-  regionMeta: {
+  // ── Farming tips ──
+  impactCard: { borderRadius: 10, borderWidth: 1, padding: 10 },
+  impactEmoji: { fontSize: 16, marginBottom: 4 },
+  impactTitle: { fontFamily: fonts.semibold, fontSize: 12, marginBottom: 3 },
+  impactText: {
     fontFamily: fonts.regular,
-    fontSize: 10,
-    color: colors.grayText,
+    fontSize: 11,
+    color: "#64748B",
+    lineHeight: 16,
   },
 });

@@ -1,7 +1,9 @@
-import { FontAwesome } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { supabase } from "@/lib/supabase";
+import { FontAwesome } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -11,31 +13,29 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '@/lib/supabase';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const colors = {
-  primary: '#22C55E',
-  primaryDark: '#16A34A',
-  primaryLight: '#BBF7D0',
-  brandBlue: '#3B82F6',
-  accent: '#0EA5E9',
-  grayText: '#94A3B8',
-  grayBorder: '#E2E8F0',
-  grayLight: '#F8FAFC',
-  dark: '#0F172A',
-  white: '#FFFFFF',
-  warning: '#F59E0B',
-  error: '#EF4444',
+  primary: "#22C55E",
+  primaryDark: "#16A34A",
+  primaryLight: "#BBF7D0",
+  brandBlue: "#3B82F6",
+  accent: "#0EA5E9",
+  grayText: "#94A3B8",
+  grayBorder: "#E2E8F0",
+  grayLight: "#F8FAFC",
+  dark: "#0F172A",
+  white: "#FFFFFF",
+  warning: "#F59E0B",
+  error: "#EF4444",
 };
 
 const fonts = {
-  regular: 'Poppins_400Regular',
-  medium: 'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold: 'Poppins_700Bold',
+  regular: "Poppins_400Regular",
+  medium: "Poppins_500Medium",
+  semibold: "Poppins_600SemiBold",
+  bold: "Poppins_700Bold",
 };
 
 // Recommended values for String Beans based on agricultural research
@@ -44,36 +44,41 @@ const STRING_BEANS_RECOMMENDATIONS = {
     min: 60,
     max: 80,
     optimal: 70,
-    unit: '%',
-    description: 'String beans thrive in soil moisture between 60-80%. Below 60% may cause stress, above 80% may lead to root rot.',
+    unit: "%",
+    description:
+      "String beans thrive in soil moisture between 60-80%. Below 60% may cause stress, above 80% may lead to root rot.",
   },
   temperature: {
     min: 20,
     max: 30,
     optimal: 25,
-    unit: '°C',
-    description: 'Optimal temperature range for string beans is 20-30°C. Growth slows below 20°C and heat stress occurs above 30°C.',
+    unit: "°C",
+    description:
+      "Optimal temperature range for string beans is 20-30°C. Growth slows below 20°C and heat stress occurs above 30°C.",
   },
   humidity: {
     min: 50,
     max: 70,
     optimal: 60,
-    unit: '%',
-    description: 'Relative humidity between 50-70% is ideal for string beans. Too low may cause wilting, too high may promote diseases.',
+    unit: "%",
+    description:
+      "Relative humidity between 50-70% is ideal for string beans. Too low may cause wilting, too high may promote diseases.",
   },
   irrigationDuration: {
     min: 15,
     max: 30,
     optimal: 20,
-    unit: 'minutes',
-    description: 'Recommended irrigation duration is 15-30 minutes per session, depending on soil type and weather conditions.',
+    unit: "minutes",
+    description:
+      "Recommended irrigation duration is 15-30 minutes per session, depending on soil type and weather conditions.",
   },
   irrigationFrequency: {
     min: 1,
     max: 3,
     optimal: 2,
-    unit: 'times per day',
-    description: 'Water string beans 1-3 times per day during dry season, 1-2 times during wet season.',
+    unit: "times per day",
+    description:
+      "Water string beans 1-3 times per day during dry season, 1-2 times during wet season.",
   },
 };
 
@@ -90,7 +95,7 @@ interface WaterRequirements {
 
 export default function WaterRequirementScreen() {
   const params = useLocalSearchParams<{ email?: string }>();
-  const email = typeof params.email === 'string' ? params.email : '';
+  const email = typeof params.email === "string" ? params.email : "";
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -104,7 +109,8 @@ export default function WaterRequirementScreen() {
     humidityMin: STRING_BEANS_RECOMMENDATIONS.humidity.min,
     humidityMax: STRING_BEANS_RECOMMENDATIONS.humidity.max,
     irrigationDuration: STRING_BEANS_RECOMMENDATIONS.irrigationDuration.optimal,
-    irrigationFrequency: STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.optimal,
+    irrigationFrequency:
+      STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.optimal,
   });
 
   useEffect(() => {
@@ -120,13 +126,13 @@ export default function WaterRequirementScreen() {
     try {
       // Get user ID
       const { data: userData, error: userError } = await supabase
-        .from('user_profiles')
-        .select('id')
-        .eq('email', email)
+        .from("user_profiles")
+        .select("id")
+        .eq("email", email)
         .single();
 
       if (userError || !userData) {
-        console.error('Error fetching user:', userError);
+        console.error("Error fetching user:", userError);
         setLoading(false);
         return;
       }
@@ -135,36 +141,57 @@ export default function WaterRequirementScreen() {
 
       // Fetch existing water requirements
       const { data: requirementsData, error: reqError } = await supabase
-        .from('water_requirements')
-        .select('*')
-        .eq('user_id', userData.id)
+        .from("water_requirements")
+        .select("*")
+        .eq("user_id", userData.id)
         .maybeSingle();
 
       // Handle table not found error gracefully
       if (reqError) {
-        if (reqError.code === 'PGRST205' || reqError.message?.includes('Could not find the table')) {
-          console.log('Water requirements table does not exist yet. Using default values.');
+        if (
+          reqError.code === "PGRST205" ||
+          reqError.message?.includes("Could not find the table")
+        ) {
+          console.log(
+            "Water requirements table does not exist yet. Using default values.",
+          );
           // Table doesn't exist, use default values (already set in state)
-        } else if (reqError.code !== 'PGRST116') {
+        } else if (reqError.code !== "PGRST116") {
           // PGRST116 means no rows found, which is fine
-          console.error('Error fetching requirements:', reqError);
+          console.error("Error fetching requirements:", reqError);
         }
       }
 
       if (requirementsData) {
         setRequirements({
-          soilMoistureMin: requirementsData.soil_moisture_min || STRING_BEANS_RECOMMENDATIONS.soilMoisture.min,
-          soilMoistureMax: requirementsData.soil_moisture_max || STRING_BEANS_RECOMMENDATIONS.soilMoisture.max,
-          temperatureMin: requirementsData.temperature_min || STRING_BEANS_RECOMMENDATIONS.temperature.min,
-          temperatureMax: requirementsData.temperature_max || STRING_BEANS_RECOMMENDATIONS.temperature.max,
-          humidityMin: requirementsData.humidity_min || STRING_BEANS_RECOMMENDATIONS.humidity.min,
-          humidityMax: requirementsData.humidity_max || STRING_BEANS_RECOMMENDATIONS.humidity.max,
-          irrigationDuration: requirementsData.irrigation_duration || STRING_BEANS_RECOMMENDATIONS.irrigationDuration.optimal,
-          irrigationFrequency: requirementsData.irrigation_frequency || STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.optimal,
+          soilMoistureMin:
+            requirementsData.soil_moisture_min ||
+            STRING_BEANS_RECOMMENDATIONS.soilMoisture.min,
+          soilMoistureMax:
+            requirementsData.soil_moisture_max ||
+            STRING_BEANS_RECOMMENDATIONS.soilMoisture.max,
+          temperatureMin:
+            requirementsData.temperature_min ||
+            STRING_BEANS_RECOMMENDATIONS.temperature.min,
+          temperatureMax:
+            requirementsData.temperature_max ||
+            STRING_BEANS_RECOMMENDATIONS.temperature.max,
+          humidityMin:
+            requirementsData.humidity_min ||
+            STRING_BEANS_RECOMMENDATIONS.humidity.min,
+          humidityMax:
+            requirementsData.humidity_max ||
+            STRING_BEANS_RECOMMENDATIONS.humidity.max,
+          irrigationDuration:
+            requirementsData.irrigation_duration ||
+            STRING_BEANS_RECOMMENDATIONS.irrigationDuration.optimal,
+          irrigationFrequency:
+            requirementsData.irrigation_frequency ||
+            STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.optimal,
         });
       }
     } catch (error) {
-      console.error('Error in fetchUserAndRequirements:', error);
+      console.error("Error in fetchUserAndRequirements:", error);
     } finally {
       setLoading(false);
     }
@@ -173,40 +200,51 @@ export default function WaterRequirementScreen() {
   const handleSave = async () => {
     // Validation
     if (requirements.soilMoistureMin >= requirements.soilMoistureMax) {
-      Alert.alert('Error', 'Minimum soil moisture must be less than maximum');
+      Alert.alert("Error", "Minimum soil moisture must be less than maximum");
       return;
     }
 
     if (requirements.temperatureMin >= requirements.temperatureMax) {
-      Alert.alert('Error', 'Minimum temperature must be less than maximum');
+      Alert.alert("Error", "Minimum temperature must be less than maximum");
       return;
     }
 
     if (requirements.humidityMin >= requirements.humidityMax) {
-      Alert.alert('Error', 'Minimum humidity must be less than maximum');
+      Alert.alert("Error", "Minimum humidity must be less than maximum");
       return;
     }
 
-    if (requirements.irrigationDuration < 5 || requirements.irrigationDuration > 60) {
-      Alert.alert('Error', 'Irrigation duration must be between 5 and 60 minutes');
+    if (
+      requirements.irrigationDuration < 5 ||
+      requirements.irrigationDuration > 60
+    ) {
+      Alert.alert(
+        "Error",
+        "Irrigation duration must be between 5 and 60 minutes",
+      );
       return;
     }
 
-    if (requirements.irrigationFrequency < 1 || requirements.irrigationFrequency > 5) {
-      Alert.alert('Error', 'Irrigation frequency must be between 1 and 5 times per day');
+    if (
+      requirements.irrigationFrequency < 1 ||
+      requirements.irrigationFrequency > 5
+    ) {
+      Alert.alert(
+        "Error",
+        "Irrigation frequency must be between 1 and 5 times per day",
+      );
       return;
     }
 
     if (!userId) {
-      Alert.alert('Error', 'User not found');
+      Alert.alert("Error", "User not found");
       return;
     }
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('water_requirements')
-        .upsert({
+      const { error } = await supabase.from("water_requirements").upsert(
+        {
           user_id: userId,
           soil_moisture_min: requirements.soilMoistureMin,
           soil_moisture_max: requirements.soilMoistureMax,
@@ -217,17 +255,22 @@ export default function WaterRequirementScreen() {
           irrigation_duration: requirements.irrigationDuration,
           irrigation_frequency: requirements.irrigationFrequency,
           updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'user_id',
-        });
+        },
+        {
+          onConflict: "user_id",
+        },
+      );
 
       if (error) {
         // Check if table doesn't exist
-        if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+        if (
+          error.code === "PGRST205" ||
+          error.message?.includes("Could not find the table")
+        ) {
           Alert.alert(
-            'Table Not Found',
-            'The water_requirements table does not exist in the database. Please create it first using the SQL script in DATABASE_SCHEMA.md',
-            [{ text: 'OK' }]
+            "Table Not Found",
+            "The water_requirements table does not exist in the database. Please create it first using the SQL script in DATABASE_SCHEMA.md",
+            [{ text: "OK" }],
           );
         } else {
           throw error;
@@ -235,12 +278,15 @@ export default function WaterRequirementScreen() {
         return;
       }
 
-      Alert.alert('Success', 'Water requirements saved successfully!', [
-        { text: 'OK', onPress: () => router.back() },
+      Alert.alert("Success", "Water requirements saved successfully!", [
+        { text: "OK", onPress: () => router.back() },
       ]);
     } catch (error: any) {
-      console.error('Error saving requirements:', error);
-      Alert.alert('Error', error.message || 'Failed to save water requirements');
+      console.error("Error saving requirements:", error);
+      Alert.alert(
+        "Error",
+        error.message || "Failed to save water requirements",
+      );
     } finally {
       setSaving(false);
     }
@@ -248,12 +294,12 @@ export default function WaterRequirementScreen() {
 
   const handleResetToRecommended = () => {
     Alert.alert(
-      'Reset to Recommended',
-      'Are you sure you want to reset all values to recommended settings for string beans?',
+      "Reset to Recommended",
+      "Are you sure you want to reset all values to recommended settings for string beans?",
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Reset',
+          text: "Reset",
           onPress: () => {
             setRequirements({
               soilMoistureMin: STRING_BEANS_RECOMMENDATIONS.soilMoisture.min,
@@ -262,12 +308,14 @@ export default function WaterRequirementScreen() {
               temperatureMax: STRING_BEANS_RECOMMENDATIONS.temperature.max,
               humidityMin: STRING_BEANS_RECOMMENDATIONS.humidity.min,
               humidityMax: STRING_BEANS_RECOMMENDATIONS.humidity.max,
-              irrigationDuration: STRING_BEANS_RECOMMENDATIONS.irrigationDuration.optimal,
-              irrigationFrequency: STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.optimal,
+              irrigationDuration:
+                STRING_BEANS_RECOMMENDATIONS.irrigationDuration.optimal,
+              irrigationFrequency:
+                STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.optimal,
             });
           },
         },
-      ]
+      ],
     );
   };
 
@@ -308,10 +356,7 @@ export default function WaterRequirementScreen() {
         </View>
         <View style={styles.inputRow}>
           <TextInput
-            style={[
-              styles.input,
-              !isWithinRecommended && styles.inputWarning,
-            ]}
+            style={[styles.input, !isWithinRecommended && styles.inputWarning]}
             value={value.toString()}
             onChangeText={(text) => {
               const num = parseFloat(text) || 0;
@@ -421,16 +466,23 @@ export default function WaterRequirementScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.container}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+      >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
             <FontAwesome name="chevron-left" size={18} color={colors.dark} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Water Requirements</Text>
-          <TouchableOpacity onPress={handleResetToRecommended} style={styles.resetButton}>
+          <TouchableOpacity
+            onPress={handleResetToRecommended}
+            style={styles.resetButton}
+          >
             <FontAwesome name="refresh" size={18} color={colors.primary} />
           </TouchableOpacity>
         </View>
@@ -439,17 +491,22 @@ export default function WaterRequirementScreen() {
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled">
-          
+          keyboardShouldPersistTaps="handled"
+        >
           {/* Info Card */}
           <View style={styles.infoCard}>
             <View style={styles.infoHeader}>
-              <FontAwesome name="info-circle" size={20} color={colors.brandBlue} />
+              <FontAwesome
+                name="info-circle"
+                size={20}
+                color={colors.brandBlue}
+              />
               <Text style={styles.infoTitle}>String Beans Requirements</Text>
             </View>
             <Text style={styles.infoText}>
-              Configure the optimal water and environmental conditions for your string beans crop.
-              Values are pre-filled with recommended settings based on agricultural research.
+              Configure the optimal water and environmental conditions for your
+              string beans crop. Values are pre-filled with recommended settings
+              based on agricultural research.
             </Text>
           </View>
 
@@ -460,11 +517,17 @@ export default function WaterRequirementScreen() {
               label="Soil Moisture"
               minValue={requirements.soilMoistureMin}
               maxValue={requirements.soilMoistureMax}
-              onMinChange={(value) => setRequirements({ ...requirements, soilMoistureMin: value })}
-              onMaxChange={(value) => setRequirements({ ...requirements, soilMoistureMax: value })}
+              onMinChange={(value) =>
+                setRequirements({ ...requirements, soilMoistureMin: value })
+              }
+              onMaxChange={(value) =>
+                setRequirements({ ...requirements, soilMoistureMax: value })
+              }
               unit="%"
               recommended={STRING_BEANS_RECOMMENDATIONS.soilMoisture}
-              description={STRING_BEANS_RECOMMENDATIONS.soilMoisture.description}
+              description={
+                STRING_BEANS_RECOMMENDATIONS.soilMoisture.description
+              }
             />
           </View>
 
@@ -475,8 +538,12 @@ export default function WaterRequirementScreen() {
               label="Temperature"
               minValue={requirements.temperatureMin}
               maxValue={requirements.temperatureMax}
-              onMinChange={(value) => setRequirements({ ...requirements, temperatureMin: value })}
-              onMaxChange={(value) => setRequirements({ ...requirements, temperatureMax: value })}
+              onMinChange={(value) =>
+                setRequirements({ ...requirements, temperatureMin: value })
+              }
+              onMaxChange={(value) =>
+                setRequirements({ ...requirements, temperatureMax: value })
+              }
               unit="°C"
               recommended={STRING_BEANS_RECOMMENDATIONS.temperature}
               description={STRING_BEANS_RECOMMENDATIONS.temperature.description}
@@ -490,8 +557,12 @@ export default function WaterRequirementScreen() {
               label="Humidity"
               minValue={requirements.humidityMin}
               maxValue={requirements.humidityMax}
-              onMinChange={(value) => setRequirements({ ...requirements, humidityMin: value })}
-              onMaxChange={(value) => setRequirements({ ...requirements, humidityMax: value })}
+              onMinChange={(value) =>
+                setRequirements({ ...requirements, humidityMin: value })
+              }
+              onMaxChange={(value) =>
+                setRequirements({ ...requirements, humidityMax: value })
+              }
               unit="%"
               recommended={STRING_BEANS_RECOMMENDATIONS.humidity}
               description={STRING_BEANS_RECOMMENDATIONS.humidity.description}
@@ -504,22 +575,30 @@ export default function WaterRequirementScreen() {
             <InputField
               label="Irrigation Duration"
               value={requirements.irrigationDuration}
-              onChange={(value) => setRequirements({ ...requirements, irrigationDuration: value })}
+              onChange={(value) =>
+                setRequirements({ ...requirements, irrigationDuration: value })
+              }
               unit="minutes"
               min={5}
               max={60}
               recommended={STRING_BEANS_RECOMMENDATIONS.irrigationDuration}
-              description={STRING_BEANS_RECOMMENDATIONS.irrigationDuration.description}
+              description={
+                STRING_BEANS_RECOMMENDATIONS.irrigationDuration.description
+              }
             />
             <InputField
               label="Irrigation Frequency"
               value={requirements.irrigationFrequency}
-              onChange={(value) => setRequirements({ ...requirements, irrigationFrequency: value })}
+              onChange={(value) =>
+                setRequirements({ ...requirements, irrigationFrequency: value })
+              }
               unit="times/day"
               min={1}
               max={5}
               recommended={STRING_BEANS_RECOMMENDATIONS.irrigationFrequency}
-              description={STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.description}
+              description={
+                STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.description
+              }
             />
           </View>
 
@@ -527,12 +606,18 @@ export default function WaterRequirementScreen() {
           <TouchableOpacity
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}
             onPress={handleSave}
-            disabled={saving}>
+            disabled={saving}
+          >
             {saving ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <>
-                <FontAwesome name="check" size={18} color="#fff" style={styles.saveButtonIcon} />
+                <FontAwesome
+                  name="check"
+                  size={18}
+                  color="#fff"
+                  style={styles.saveButtonIcon}
+                />
                 <Text style={styles.saveButtonText}>Save Requirements</Text>
               </>
             )}
@@ -553,8 +638,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     gap: 12,
   },
   loadingText: {
@@ -563,9 +648,9 @@ const styles = StyleSheet.create({
     color: colors.grayText,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: colors.white,
@@ -577,7 +662,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontFamily: fonts.semibold,
-    fontSize: 18,
+    fontSize: 16,
     color: colors.dark,
   },
   resetButton: {
@@ -598,8 +683,8 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.brandBlue,
   },
   infoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     marginBottom: 8,
   },
@@ -630,9 +715,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   inputHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 4,
   },
   inputLabel: {
@@ -652,8 +737,8 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
   },
   inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   input: {
@@ -670,7 +755,7 @@ const styles = StyleSheet.create({
   },
   inputWarning: {
     borderColor: colors.warning,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: "#FEF3C7",
   },
   unitText: {
     fontFamily: fonts.medium,
@@ -695,8 +780,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   rangeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   rangeInputContainer: {
@@ -737,9 +822,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
     marginTop: 8,
     marginBottom: 24,
@@ -756,4 +841,3 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
 });
-

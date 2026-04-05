@@ -176,9 +176,6 @@ export default function HistoryIrrigationLoggingScreen() {
           <FontAwesome name="chevron-left" size={18} color={colors.dark} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Irrigation & Water Logging</Text>
-        <TouchableOpacity style={styles.headerBtn} accessibilityLabel="Add">
-          <FontAwesome name="plus" size={18} color={colors.primary} />
-        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -276,11 +273,16 @@ const styles = StyleSheet.create({
   },
   headerBtn: {
     padding: 8,
+    zIndex: 1,
   },
   headerTitle: {
     fontFamily: fonts.semibold,
-    fontSize: 18,
+    fontSize: 16,
     color: colors.dark,
+    textAlign: "center",
+    position: "absolute",
+    left: 0,
+    right: 0,
   },
 
   // Scroll

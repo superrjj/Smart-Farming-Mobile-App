@@ -10,7 +10,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -40,43 +40,6 @@ const MONTH_NAMES = [
   "Nov",
   "Dec",
 ];
-
-const REGIONS = {
-  Luzon: {
-    label: "Luzon",
-    color: "#3B82F6",
-    stations: [
-      { name: "Tarlac", lat: 15.4802, lon: 120.5979 },
-      { name: "Pangasinan", lat: 16.0433, lon: 120.3336 },
-      { name: "Cagayan", lat: 17.6132, lon: 121.727 },
-      { name: "Batangas", lat: 13.7565, lon: 121.0583 },
-      { name: "Quezon", lat: 14.031, lon: 121.915 },
-      { name: "Benguet", lat: 16.4023, lon: 120.596 },
-    ],
-  },
-  Visayas: {
-    label: "Visayas",
-    color: "#10B981",
-    stations: [
-      { name: "Iloilo", lat: 10.7202, lon: 122.5621 },
-      { name: "Negros Occidental", lat: 10.6713, lon: 122.9511 },
-      { name: "Cebu", lat: 10.3157, lon: 123.8854 },
-      { name: "Leyte", lat: 11.244, lon: 124.99 },
-    ],
-  },
-  Mindanao: {
-    label: "Mindanao",
-    color: "#F97316",
-    stations: [
-      { name: "Bukidnon", lat: 8.0515, lon: 124.929 },
-      { name: "Davao", lat: 7.1907, lon: 125.4553 },
-      { name: "Cotabato", lat: 7.2047, lon: 124.231 },
-      { name: "Zamboanga", lat: 6.9214, lon: 122.079 },
-    ],
-  },
-} as const;
-
-type RegionKey = keyof typeof REGIONS;
 
 // ── Colors & Fonts ────────────────────────────────────────────────────────────
 const colors = {
@@ -111,14 +74,6 @@ interface MonthlyRecord {
   growScore: number;
   dataPoints: number;
   isPartial: boolean;
-}
-
-interface RegionalMonth {
-  month: string;
-  avgTemp: number;
-  avgHumidity: number;
-  totalRainfall: number;
-  growScore: number;
 }
 
 // ── Score helpers ─────────────────────────────────────────────────────────────
@@ -232,80 +187,6 @@ const fetchHistoricalData = async (
       isPartial: key === currentKey,
     };
   });
-};
-
-const fetchRegionalData = async (
-  stations: readonly { name: string; lat: number; lon: number }[],
-  year: number,
-): Promise<RegionalMonth[]> => {
-  const now = new Date();
-  const isCurrentYear = year === now.getFullYear();
-  const endMonth = isCurrentYear
-    ? now.getMonth() === 0
-      ? 11
-      : now.getMonth() - 1
-    : 11;
-  const endYear =
-    isCurrentYear && now.getMonth() === 0 ? now.getFullYear() - 1 : year;
-  const endDate = new Date(endYear, endMonth + 1, 0)
-    .toISOString()
-    .split("T")[0];
-  const startDate = `${year}-01-01`;
-  if (new Date(startDate) > new Date(endDate)) return [];
-
-  const allData: Record<
-    string,
-    { temps: number[]; hums: number[]; rains: number[] }
-  > = {};
-  await Promise.all(
-    stations.map(async (station) => {
-      try {
-        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${station.lat}&longitude=${station.lon}&start_date=${startDate}&end_date=${endDate}&daily=temperature_2m_mean,relative_humidity_2m_mean,precipitation_sum&timezone=Asia%2FManila`;
-        const res = await fetch(url);
-        if (!res.ok) return;
-        const json = await res.json();
-        const {
-          time,
-          temperature_2m_mean,
-          relative_humidity_2m_mean,
-          precipitation_sum,
-        } = json.daily;
-        time.forEach((dateStr: string, i: number) => {
-          const key = MONTH_NAMES[new Date(dateStr).getMonth()];
-          if (!allData[key]) allData[key] = { temps: [], hums: [], rains: [] };
-          if (temperature_2m_mean[i] != null)
-            allData[key].temps.push(temperature_2m_mean[i]);
-          if (relative_humidity_2m_mean[i] != null)
-            allData[key].hums.push(relative_humidity_2m_mean[i]);
-          if (precipitation_sum[i] != null)
-            allData[key].rains.push(precipitation_sum[i]);
-        });
-      } catch {
-        /* skip */
-      }
-    }),
-  );
-
-  return Object.entries(allData)
-    .sort((a, b) => MONTH_NAMES.indexOf(a[0]) - MONTH_NAMES.indexOf(b[0]))
-    .map(([month, vals]) => {
-      const avg = (arr: number[]) =>
-        arr.length
-          ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10
-          : 0;
-      const sum = (arr: number[]) =>
-        Math.round(arr.reduce((a, b) => a + b, 0) * 10) / 10;
-      const avgTemp = avg(vals.temps);
-      const avgHumidity = avg(vals.hums);
-      const totalRainfall = sum(vals.rains);
-      return {
-        month,
-        avgTemp,
-        avgHumidity,
-        totalRainfall,
-        growScore: computeScore(avgTemp, avgHumidity, totalRainfall),
-      };
-    });
 };
 
 // ── Insights ──────────────────────────────────────────────────────────────────
@@ -472,8 +353,6 @@ const deriveMonthReco = (record: MonthlyRecord, yearData: MonthlyRecord[]) => {
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-
-// Score bar chart (horizontal scrollable)
 const ScoreBarChart = ({
   data,
   selectedMonth,
@@ -555,10 +434,8 @@ const ScoreBarChart = ({
   );
 };
 
-// Mini line chart
 const MiniLineChart = ({
   data,
-  lineKey,
   lineColor,
   height = 80,
   refLines,
@@ -652,7 +529,6 @@ const MiniLineChart = ({
   );
 };
 
-// Multi-line chart
 const MultiLineChart = ({
   data,
   lines,
@@ -672,7 +548,6 @@ const MultiLineChart = ({
   const maxVal = Math.max(...allValues, 1);
   const minVal = Math.min(...allValues, 0);
   const range = maxVal - minVal || 1;
-
   const getY = (val: number | null) =>
     val != null ? height - ((val - minVal) / range) * height : null;
 
@@ -732,7 +607,6 @@ const MultiLineChart = ({
             );
           });
         })}
-        {/* X labels */}
         {data.map((d, i) => {
           const chartW = Math.max(W, data.length * 36);
           return (
@@ -758,7 +632,6 @@ const MultiLineChart = ({
   );
 };
 
-// Progress bar
 const ProgressBar = ({ value, color }: { value: number; color: string }) => (
   <View
     style={{
@@ -780,7 +653,6 @@ const ProgressBar = ({ value, color }: { value: number; color: string }) => (
   </View>
 );
 
-// Score badge
 const ScoreBadge = ({ score }: { score: number }) => {
   const s = getScoreStyle(score);
   return (
@@ -808,11 +680,8 @@ export default function PatternAnalyzerScreen() {
   const router = useRouter();
   const currentYear = new Date().getFullYear();
 
-  // Tabs
-  const [activeTab, setActiveTab] = useState<"farm" | "regional">("farm");
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Farm state
   const [data, setData] = useState<MonthlyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -823,18 +692,6 @@ export default function PatternAnalyzerScreen() {
   >("score");
   const [coords] = useState({ lat: 15.53, lon: 120.6042 });
   const [location] = useState("Dalayap, Tarlac City");
-
-  // Regional state
-  const [regionalLoading, setRegionalLoading] = useState(false);
-  const [regionalError, setRegionalError] = useState<string | null>(null);
-  const [regionalData, setRegionalData] = useState<
-    Record<RegionKey, RegionalMonth[]>
-  >({ Luzon: [], Visayas: [], Mindanao: [] });
-  const [regionalYear, setRegionalYear] = useState(currentYear);
-  const [regionalMonth, setRegionalMonth] = useState("");
-  const [regionalChart, setRegionalChart] = useState<
-    "score" | "temp" | "humidity" | "rainfall"
-  >("score");
 
   const animateIn = () => {
     fadeAnim.setValue(0);
@@ -866,32 +723,7 @@ export default function PatternAnalyzerScreen() {
     setSelectedMonth("");
   }, [selectedYear]);
 
-  useEffect(() => {
-    if (activeTab !== "regional") return;
-    const loadRegional = async () => {
-      setRegionalLoading(true);
-      setRegionalError(null);
-      try {
-        const [luzon, visayas, mindanao] = await Promise.all([
-          fetchRegionalData(REGIONS.Luzon.stations, regionalYear),
-          fetchRegionalData(REGIONS.Visayas.stations, regionalYear),
-          fetchRegionalData(REGIONS.Mindanao.stations, regionalYear),
-        ]);
-        setRegionalData({ Luzon: luzon, Visayas: visayas, Mindanao: mindanao });
-        setRegionalMonth("");
-        animateIn();
-      } catch {
-        setRegionalError(
-          "Failed to load regional data. Check your connection.",
-        );
-      } finally {
-        setRegionalLoading(false);
-      }
-    };
-    loadRegional();
-  }, [activeTab, regionalYear]);
-
-  // Farm derived
+  // Derived
   const yearData = data.filter((d) => d.month.endsWith(String(selectedYear)));
   const complete = yearData.filter((d) => !d.isPartial);
   const best = complete.length
@@ -925,7 +757,6 @@ export default function PatternAnalyzerScreen() {
     ? deriveMonthReco(selectedRecord, yearData)
     : null;
 
-  // Climate chart data
   const chartData = yearData.map((d) => ({
     label: d.shortLabel,
     score: d.growScore,
@@ -933,117 +764,6 @@ export default function PatternAnalyzerScreen() {
     humidity: d.avgHumidity,
     rainfall: d.totalRainfall,
   }));
-
-  // Regional derived
-  const allAvailableMonths = [
-    ...new Set([
-      ...regionalData.Luzon.map((d) => d.month),
-      ...regionalData.Visayas.map((d) => d.month),
-      ...regionalData.Mindanao.map((d) => d.month),
-    ]),
-  ].sort((a, b) => MONTH_NAMES.indexOf(a) - MONTH_NAMES.indexOf(b));
-
-  const filteredMonths = regionalMonth
-    ? allAvailableMonths.filter((m) => m === regionalMonth)
-    : allAvailableMonths;
-
-  const regionalChartData = filteredMonths.map((month) => {
-    const l = regionalData.Luzon.find((d) => d.month === month);
-    const v = regionalData.Visayas.find((d) => d.month === month);
-    const m = regionalData.Mindanao.find((d) => d.month === month);
-    return {
-      month,
-      luzonScore: l?.growScore ?? null,
-      visayasScore: v?.growScore ?? null,
-      mindanaoScore: m?.growScore ?? null,
-      luzonTemp: l?.avgTemp ?? null,
-      visayasTemp: v?.avgTemp ?? null,
-      mindanaoTemp: m?.avgTemp ?? null,
-      luzonHumidity: l?.avgHumidity ?? null,
-      visayasHumidity: v?.avgHumidity ?? null,
-      mindanaoHumidity: m?.avgHumidity ?? null,
-      luzonRain: l?.totalRainfall ?? null,
-      visayasRain: v?.totalRainfall ?? null,
-      mindanaoRain: m?.totalRainfall ?? null,
-    };
-  });
-
-  const regionalSummary = (Object.keys(REGIONS) as RegionKey[]).map((key) => {
-    const rData = regionalData[key].filter(
-      (d) => !regionalMonth || d.month === regionalMonth,
-    );
-    const avgScoreR = rData.length
-      ? Math.round(rData.reduce((s, d) => s + d.growScore, 0) / rData.length)
-      : 0;
-    const bestMonth = rData.length
-      ? rData.reduce((a, b) => (a.growScore > b.growScore ? a : b), rData[0])
-      : null;
-    return { key, ...REGIONS[key], avgScore: avgScoreR, bestMonth };
-  });
-
-  const getRegionalChartLines = () => {
-    if (regionalChart === "score")
-      return [
-        { key: "luzonScore", color: REGIONS.Luzon.color, label: "Luzon" },
-        { key: "visayasScore", color: REGIONS.Visayas.color, label: "Visayas" },
-        {
-          key: "mindanaoScore",
-          color: REGIONS.Mindanao.color,
-          label: "Mindanao",
-        },
-      ];
-    if (regionalChart === "temp")
-      return [
-        { key: "luzonTemp", color: REGIONS.Luzon.color, label: "Luzon" },
-        { key: "visayasTemp", color: REGIONS.Visayas.color, label: "Visayas" },
-        {
-          key: "mindanaoTemp",
-          color: REGIONS.Mindanao.color,
-          label: "Mindanao",
-        },
-      ];
-    if (regionalChart === "humidity")
-      return [
-        { key: "luzonHumidity", color: REGIONS.Luzon.color, label: "Luzon" },
-        {
-          key: "visayasHumidity",
-          color: REGIONS.Visayas.color,
-          label: "Visayas",
-        },
-        {
-          key: "mindanaoHumidity",
-          color: REGIONS.Mindanao.color,
-          label: "Mindanao",
-        },
-      ];
-    return [
-      { key: "luzonRain", color: REGIONS.Luzon.color, label: "Luzon" },
-      { key: "visayasRain", color: REGIONS.Visayas.color, label: "Visayas" },
-      { key: "mindanaoRain", color: REGIONS.Mindanao.color, label: "Mindanao" },
-    ];
-  };
-
-  const getRegionalRefLines = () => {
-    if (regionalChart === "score")
-      return [
-        { value: 80, color: colors.emerald, label: "Excellent" },
-        { value: 65, color: colors.primary, label: "Good" },
-      ];
-    if (regionalChart === "temp")
-      return [
-        { value: IDEAL.tempMax, color: colors.orange, label: "Max" },
-        { value: IDEAL.tempMin, color: colors.primary, label: "Min" },
-      ];
-    if (regionalChart === "humidity")
-      return [
-        { value: IDEAL.humMax, color: colors.cyan, label: "Max" },
-        { value: IDEAL.humMin, color: colors.cyan, label: "Min" },
-      ];
-    return [
-      { value: IDEAL.rainMax, color: colors.red, label: "Max" },
-      { value: IDEAL.rainMin, color: colors.emerald, label: "Min" },
-    ];
-  };
 
   const avgSStyle = getScoreStyle(avgScore);
 
@@ -1060,1110 +780,670 @@ export default function PatternAnalyzerScreen() {
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Pattern Analyzer</Text>
           <Text style={styles.headerSub}>
-            Historical climate · String bean cultivation
+            <FontAwesome name="map-marker" size={10} color={colors.primary} />{" "}
+            {location} · String bean cultivation
           </Text>
         </View>
       </View>
 
-      {/* Tab bar */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          onPress={() => setActiveTab("farm")}
-          style={[
-            styles.tabBarBtn,
-            activeTab === "farm" && styles.tabBarBtnActive,
-          ]}
-        >
-          <FontAwesome
-            name="leaf"
-            size={12}
-            color={activeTab === "farm" ? colors.primary : colors.grayText}
-          />
-          <Text
-            style={[
-              styles.tabBarBtnText,
-              activeTab === "farm" && { color: colors.primary },
-            ]}
-          >
-            Farm Analysis
+      {loading ? (
+        <View style={styles.loader}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loaderText}>
+            Fetching 2 years of historical data…
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setActiveTab("regional")}
-          style={[
-            styles.tabBarBtn,
-            activeTab === "regional" && styles.tabBarBtnActive,
-          ]}
-        >
-          <FontAwesome
-            name="globe"
-            size={12}
-            color={activeTab === "regional" ? colors.emerald : colors.grayText}
-          />
-          <Text
-            style={[
-              styles.tabBarBtnText,
-              activeTab === "regional" && { color: colors.emerald },
-            ]}
+        </View>
+      ) : error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity
+            onPress={() => load(coords.lat, coords.lon)}
+            style={styles.retryBtn}
           >
-            Regional Overview
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ══ FARM TAB ══ */}
-      {activeTab === "farm" && (
-        <>
-          {loading ? (
-            <View style={styles.loader}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loaderText}>
-                Fetching 2 years of historical data…
-              </Text>
-            </View>
-          ) : error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity
-                onPress={() => load(coords.lat, coords.lon)}
-                style={styles.retryBtn}
-              >
-                <Text style={styles.retryBtnText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <Animated.ScrollView
-              style={[styles.scroll, { opacity: fadeAnim }]}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {/* Controls */}
-              <View style={styles.controlsRow}>
-                <View style={styles.controlPill}>
-                  <FontAwesome
-                    name="calendar"
-                    size={11}
-                    color={colors.primary}
-                  />
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View style={{ flexDirection: "row", gap: 6 }}>
-                      {availableYears.map((y) => (
-                        <TouchableOpacity
-                          key={y}
-                          onPress={() => setSelectedYear(y)}
-                          style={[
-                            styles.yearChip,
-                            selectedYear === y && styles.yearChipActive,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.yearChipText,
-                              selectedYear === y && { color: colors.white },
-                            ]}
-                          >
-                            {y}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </ScrollView>
-                </View>
-              </View>
-
-              {/* Month filter */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ marginHorizontal: -16 }}
-                contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}
-              >
-                <TouchableOpacity
-                  onPress={() => setSelectedMonth("")}
-                  style={[
-                    styles.monthChip,
-                    !selectedMonth && styles.monthChipActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.monthChipText,
-                      !selectedMonth && styles.monthChipTextActive,
-                    ]}
-                  >
-                    All
-                  </Text>
-                </TouchableOpacity>
-                {availableMonths.map((m) => (
-                  <TouchableOpacity
-                    key={m}
-                    onPress={() =>
-                      setSelectedMonth(selectedMonth === m ? "" : m)
-                    }
-                    style={[
-                      styles.monthChip,
-                      selectedMonth === m && styles.monthChipActive,
-                    ]}
-                  >
-                    <Text
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <Animated.ScrollView
+          style={[styles.scroll, { opacity: fadeAnim }]}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Year selector */}
+          <View style={styles.controlsRow}>
+            <View style={styles.controlPill}>
+              <FontAwesome name="calendar" size={11} color={colors.primary} />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: "row", gap: 6 }}>
+                  {availableYears.map((y) => (
+                    <TouchableOpacity
+                      key={y}
+                      onPress={() => setSelectedYear(y)}
                       style={[
-                        styles.monthChipText,
-                        selectedMonth === m && styles.monthChipTextActive,
+                        styles.yearChip,
+                        selectedYear === y && styles.yearChipActive,
                       ]}
                     >
-                      {m}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {/* Location & summary */}
-              <View style={styles.summaryRow}>
-                <View style={styles.summaryItem}>
-                  <FontAwesome
-                    name="map-marker"
-                    size={12}
-                    color={colors.primary}
-                  />
-                  <Text style={styles.summaryLabel}>{location}</Text>
-                </View>
-                <View style={styles.summaryDivider} />
-                <View style={styles.summaryItem}>
-                  <FontAwesome
-                    name="bar-chart"
-                    size={11}
-                    color={avgSStyle.color}
-                  />
-                  <Text
-                    style={[styles.summaryValue, { color: avgSStyle.color }]}
-                  >
-                    {avgScore}/100 — {avgSStyle.label}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Best / Worst */}
-              <View style={styles.bestWorstRow}>
-                <View
-                  style={[
-                    styles.bestWorstCard,
-                    {
-                      borderColor: colors.emerald + "40",
-                      backgroundColor: "#F0FDF4",
-                    },
-                  ]}
-                >
-                  <FontAwesome
-                    name="arrow-up"
-                    size={11}
-                    color={colors.emerald}
-                  />
-                  <View>
-                    <Text style={styles.bwLabel}>Best Month</Text>
-                    <Text style={[styles.bwValue, { color: colors.emerald }]}>
-                      {best?.month ?? "—"}
-                    </Text>
-                    {best && (
-                      <Text style={styles.bwSub}>{best.growScore}/100</Text>
-                    )}
-                  </View>
-                </View>
-                <View
-                  style={[
-                    styles.bestWorstCard,
-                    {
-                      borderColor: colors.red + "40",
-                      backgroundColor: "#FEF2F2",
-                    },
-                  ]}
-                >
-                  <FontAwesome name="arrow-down" size={11} color={colors.red} />
-                  <View>
-                    <Text style={styles.bwLabel}>Worst Month</Text>
-                    <Text style={[styles.bwValue, { color: colors.red }]}>
-                      {worst?.month ?? "—"}
-                    </Text>
-                    {worst && (
-                      <Text style={styles.bwSub}>{worst.growScore}/100</Text>
-                    )}
-                  </View>
-                </View>
-              </View>
-
-              {/* Score bar chart */}
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>
-                  Monthly Growing Score — {selectedYear}
-                </Text>
-                <Text style={styles.cardSub}>
-                  Tap a bar to inspect that month&apos;s conditions
-                </Text>
-                <ScoreBarChart
-                  data={yearData}
-                  selectedMonth={selectedMonth}
-                  onSelectMonth={setSelectedMonth}
-                />
-                {/* Legend */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    flexWrap: "wrap",
-                    gap: 8,
-                    marginTop: 8,
-                  }}
-                >
-                  {[
-                    { c: colors.emerald, l: "80+ Excellent" },
-                    { c: colors.primary, l: "65–79 Good" },
-                    { c: colors.amber, l: "50–64 Fair" },
-                    { c: colors.red, l: "<50 Poor" },
-                  ].map((x) => (
-                    <View
-                      key={x.l}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 2,
-                          backgroundColor: x.c,
-                        }}
-                      />
                       <Text
-                        style={{
-                          fontSize: 9,
-                          fontFamily: fonts.regular,
-                          color: colors.grayText,
-                        }}
+                        style={[
+                          styles.yearChipText,
+                          selectedYear === y && { color: colors.white },
+                        ]}
                       >
-                        {x.l}
+                        {y}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
-              </View>
+              </ScrollView>
+            </View>
+          </View>
 
-              {/* Selected month detail */}
-              {selectedRecord && (
-                <View
+          {/* Month filter */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginHorizontal: -16 }}
+            contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}
+          >
+            <TouchableOpacity
+              onPress={() => setSelectedMonth("")}
+              style={[
+                styles.monthChip,
+                !selectedMonth && styles.monthChipActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.monthChipText,
+                  !selectedMonth && styles.monthChipTextActive,
+                ]}
+              >
+                All
+              </Text>
+            </TouchableOpacity>
+            {availableMonths.map((m) => (
+              <TouchableOpacity
+                key={m}
+                onPress={() => setSelectedMonth(selectedMonth === m ? "" : m)}
+                style={[
+                  styles.monthChip,
+                  selectedMonth === m && styles.monthChipActive,
+                ]}
+              >
+                <Text
                   style={[
-                    styles.card,
-                    {
-                      borderWidth: 2,
-                      borderColor: getScoreStyle(selectedRecord.growScore)
-                        .border,
-                      backgroundColor: getScoreStyle(selectedRecord.growScore)
-                        .bg,
-                    },
+                    styles.monthChipText,
+                    selectedMonth === m && styles.monthChipTextActive,
                   ]}
+                >
+                  {m}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* Location & summary */}
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryItem}>
+              <FontAwesome name="map-marker" size={12} color={colors.primary} />
+              <Text style={styles.summaryLabel}>{location}</Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryItem}>
+              <FontAwesome name="bar-chart" size={11} color={avgSStyle.color} />
+              <Text style={[styles.summaryValue, { color: avgSStyle.color }]}>
+                {avgScore}/100 — {avgSStyle.label}
+              </Text>
+            </View>
+          </View>
+
+          {/* Best / Worst */}
+          <View style={styles.bestWorstRow}>
+            <View
+              style={[
+                styles.bestWorstCard,
+                {
+                  borderColor: colors.emerald + "40",
+                  backgroundColor: "#F0FDF4",
+                },
+              ]}
+            >
+              <FontAwesome name="arrow-up" size={11} color={colors.emerald} />
+              <View>
+                <Text style={styles.bwLabel}>Best Month</Text>
+                <Text style={[styles.bwValue, { color: colors.emerald }]}>
+                  {best?.month ?? "—"}
+                </Text>
+                {best && <Text style={styles.bwSub}>{best.growScore}/100</Text>}
+              </View>
+            </View>
+            <View
+              style={[
+                styles.bestWorstCard,
+                { borderColor: colors.red + "40", backgroundColor: "#FEF2F2" },
+              ]}
+            >
+              <FontAwesome name="arrow-down" size={11} color={colors.red} />
+              <View>
+                <Text style={styles.bwLabel}>Worst Month</Text>
+                <Text style={[styles.bwValue, { color: colors.red }]}>
+                  {worst?.month ?? "—"}
+                </Text>
+                {worst && (
+                  <Text style={styles.bwSub}>{worst.growScore}/100</Text>
+                )}
+              </View>
+            </View>
+          </View>
+
+          {/* Score bar chart */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>
+              Monthly Growing Score — {selectedYear}
+            </Text>
+            <Text style={styles.cardSub}>
+              Tap a bar to inspect that month&apos;s conditions
+            </Text>
+            <ScoreBarChart
+              data={yearData}
+              selectedMonth={selectedMonth}
+              onSelectMonth={setSelectedMonth}
+            />
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: 8,
+                marginTop: 8,
+              }}
+            >
+              {[
+                { c: colors.emerald, l: "80+ Excellent" },
+                { c: colors.primary, l: "65–79 Good" },
+                { c: colors.amber, l: "50–64 Fair" },
+                { c: colors.red, l: "<50 Poor" },
+              ].map((x) => (
+                <View
+                  key={x.l}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
                 >
                   <View
                     style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      marginBottom: 12,
+                      width: 8,
+                      height: 8,
+                      borderRadius: 2,
+                      backgroundColor: x.c,
+                    }}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      fontFamily: fonts.regular,
+                      color: colors.grayText,
                     }}
                   >
-                    <View>
-                      <Text style={styles.cardTitle}>
-                        {selectedRecord.month}
-                        {selectedRecord.isPartial ? " (in progress)" : ""}
-                      </Text>
-                      <Text style={styles.cardSub}>
-                        {selectedRecord.dataPoints} days of data
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: "flex-end", gap: 4 }}>
+                    {x.l}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Selected month detail */}
+          {selectedRecord && (
+            <View
+              style={[
+                styles.card,
+                {
+                  borderWidth: 2,
+                  borderColor: getScoreStyle(selectedRecord.growScore).border,
+                  backgroundColor: getScoreStyle(selectedRecord.growScore).bg,
+                },
+              ]}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  marginBottom: 12,
+                }}
+              >
+                <View>
+                  <Text style={styles.cardTitle}>
+                    {selectedRecord.month}
+                    {selectedRecord.isPartial ? " (in progress)" : ""}
+                  </Text>
+                  <Text style={styles.cardSub}>
+                    {selectedRecord.dataPoints} days of data
+                  </Text>
+                </View>
+                <View style={{ alignItems: "flex-end", gap: 4 }}>
+                  <Text
+                    style={[
+                      styles.bigScore,
+                      { color: getScoreStyle(selectedRecord.growScore).color },
+                    ]}
+                  >
+                    {selectedRecord.growScore}
+                  </Text>
+                  <ScoreBadge score={selectedRecord.growScore} />
+                </View>
+              </View>
+              <View style={styles.metricsGrid}>
+                {[
+                  {
+                    label: "Avg Temp",
+                    value: `${selectedRecord.avgTemp}°C`,
+                    ideal: "18–30°C",
+                    ok:
+                      selectedRecord.avgTemp >= IDEAL.tempMin &&
+                      selectedRecord.avgTemp <= IDEAL.tempMax,
+                  },
+                  {
+                    label: "Avg Humidity",
+                    value: `${selectedRecord.avgHumidity}%`,
+                    ideal: "55–75%",
+                    ok:
+                      selectedRecord.avgHumidity >= IDEAL.humMin &&
+                      selectedRecord.avgHumidity <= IDEAL.humMax,
+                  },
+                  {
+                    label: "Total Rain",
+                    value: `${selectedRecord.totalRainfall}mm`,
+                    ideal: "20–100mm",
+                    ok:
+                      selectedRecord.totalRainfall >= IDEAL.rainMin &&
+                      selectedRecord.totalRainfall <= IDEAL.rainMax,
+                  },
+                  {
+                    label: "Avg Wind",
+                    value: `${selectedRecord.avgWind} km/h`,
+                    ideal: "<30 km/h",
+                    ok: selectedRecord.avgWind < 30,
+                  },
+                ].map((s, i) => (
+                  <View key={i} style={styles.metricCard}>
+                    <Text style={styles.metricLabel}>{s.label}</Text>
+                    <Text style={styles.metricValue}>{s.value}</Text>
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        color: s.ok ? colors.emerald : colors.red,
+                        fontFamily: fonts.regular,
+                        marginTop: 2,
+                      }}
+                    >
+                      {s.ok ? "✅" : "⚠️"} {s.ideal}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Recommendations */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Recommendations</Text>
+            <Text style={styles.cardSub}>
+              {monthReco
+                ? `Planting assessment for ${selectedMonth} ${selectedYear}`
+                : `Derived from ${data.length} months of climate data`}
+            </Text>
+
+            {!monthReco ? (
+              <View style={{ gap: 10, marginTop: 4 }}>
+                {insights.map((obs, i) => (
+                  <View key={i} style={styles.insightRow}>
+                    <Text style={styles.insightIcon}>{obs.icon}</Text>
+                    <Text style={styles.insightText}>{obs.text}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              selectedRecord && (
+                <View style={{ gap: 12, marginTop: 4 }}>
+                  {/* Verdict */}
+                  <View
+                    style={[
+                      styles.verdictCard,
+                      {
+                        backgroundColor: getScoreStyle(selectedRecord.growScore)
+                          .bg,
+                        borderColor: getScoreStyle(selectedRecord.growScore)
+                          .border,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.verdictIcon}>
+                      {monthReco.verdict.icon}
+                    </Text>
+                    <View style={{ flex: 1 }}>
                       <Text
                         style={[
-                          styles.bigScore,
+                          styles.verdictTitle,
                           {
                             color: getScoreStyle(selectedRecord.growScore)
                               .color,
                           },
                         ]}
                       >
-                        {selectedRecord.growScore}
+                        {monthReco.verdict.title}
                       </Text>
-                      <ScoreBadge score={selectedRecord.growScore} />
+                      <Text style={styles.verdictDesc}>
+                        {monthReco.verdict.desc}
+                      </Text>
                     </View>
                   </View>
 
-                  <View style={styles.metricsGrid}>
-                    {[
-                      {
-                        label: "Avg Temp",
-                        value: `${selectedRecord.avgTemp}°C`,
-                        ideal: "18–30°C",
-                        ok:
-                          selectedRecord.avgTemp >= IDEAL.tempMin &&
-                          selectedRecord.avgTemp <= IDEAL.tempMax,
-                      },
-                      {
-                        label: "Avg Humidity",
-                        value: `${selectedRecord.avgHumidity}%`,
-                        ideal: "55–75%",
-                        ok:
-                          selectedRecord.avgHumidity >= IDEAL.humMin &&
-                          selectedRecord.avgHumidity <= IDEAL.humMax,
-                      },
-                      {
-                        label: "Total Rain",
-                        value: `${selectedRecord.totalRainfall}mm`,
-                        ideal: "20–100mm",
-                        ok:
-                          selectedRecord.totalRainfall >= IDEAL.rainMin &&
-                          selectedRecord.totalRainfall <= IDEAL.rainMax,
-                      },
-                      {
-                        label: "Avg Wind",
-                        value: `${selectedRecord.avgWind} km/h`,
-                        ideal: "<30 km/h",
-                        ok: selectedRecord.avgWind < 30,
-                      },
-                    ].map((s, i) => (
-                      <View key={i} style={styles.metricCard}>
-                        <Text style={styles.metricLabel}>{s.label}</Text>
-                        <Text style={styles.metricValue}>{s.value}</Text>
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            color: s.ok ? colors.emerald : colors.red,
-                            fontFamily: fonts.regular,
-                            marginTop: 2,
-                          }}
-                        >
-                          {s.ok ? "✅" : "⚠️"} {s.ideal}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* Recommendations */}
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Recommendations</Text>
-                <Text style={styles.cardSub}>
-                  {monthReco
-                    ? `Planting assessment for ${selectedMonth} ${selectedYear}`
-                    : `Derived from ${data.length} months of climate data`}
-                </Text>
-
-                {!monthReco ? (
-                  <View style={{ gap: 10, marginTop: 4 }}>
-                    {insights.map((obs, i) => (
-                      <View key={i} style={styles.insightRow}>
-                        <Text style={styles.insightIcon}>{obs.icon}</Text>
-                        <Text style={styles.insightText}>{obs.text}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : (
-                  selectedRecord && (
-                    <View style={{ gap: 12, marginTop: 4 }}>
-                      {/* Verdict */}
-                      <View
-                        style={[
-                          styles.verdictCard,
-                          {
-                            backgroundColor: getScoreStyle(
-                              selectedRecord.growScore,
-                            ).bg,
-                            borderColor: getScoreStyle(selectedRecord.growScore)
-                              .border,
-                          },
-                        ]}
-                      >
-                        <Text style={styles.verdictIcon}>
-                          {monthReco.verdict.icon}
-                        </Text>
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={[
-                              styles.verdictTitle,
-                              {
-                                color: getScoreStyle(selectedRecord.growScore)
-                                  .color,
-                              },
-                            ]}
-                          >
-                            {monthReco.verdict.title}
-                          </Text>
-                          <Text style={styles.verdictDesc}>
-                            {monthReco.verdict.desc}
-                          </Text>
+                  {/* Action items */}
+                  {monthReco.flags.length > 0 ? (
+                    <View style={{ gap: 6 }}>
+                      <Text style={styles.sectionLabel}>ACTION ITEMS</Text>
+                      {monthReco.flags.map((f, i) => (
+                        <View key={i} style={styles.flagRow}>
+                          <Text style={styles.flagIcon}>{f.icon}</Text>
+                          <Text style={styles.flagText}>{f.text}</Text>
                         </View>
-                      </View>
-
-                      {/* Action items */}
-                      {monthReco.flags.length > 0 ? (
-                        <View style={{ gap: 6 }}>
-                          <Text style={styles.sectionLabel}>ACTION ITEMS</Text>
-                          {monthReco.flags.map((f, i) => (
-                            <View key={i} style={styles.flagRow}>
-                              <Text style={styles.flagIcon}>{f.icon}</Text>
-                              <Text style={styles.flagText}>{f.text}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      ) : (
-                        <View style={styles.allGoodBox}>
-                          <Text style={styles.allGoodText}>
-                            ✅ All climate conditions are within ideal range. No
-                            corrective actions needed.
-                          </Text>
-                        </View>
-                      )}
-
-                      {/* Alternatives */}
-                      {monthReco.alternatives.length > 0 && (
-                        <View>
-                          <Text style={styles.sectionLabel}>
-                            {selectedRecord.growScore >= 80
-                              ? `OTHER STRONG MONTHS IN ${selectedYear}`
-                              : `BETTER ALTERNATIVES IN ${selectedYear}`}
-                          </Text>
-                          <View
-                            style={{
-                              flexDirection: "row",
-                              gap: 10,
-                              marginTop: 6,
-                            }}
-                          >
-                            {monthReco.alternatives.map((alt, i) => {
-                              const s = getScoreStyle(alt.growScore);
-                              return (
-                                <TouchableOpacity
-                                  key={i}
-                                  onPress={() =>
-                                    setSelectedMonth(alt.shortLabel)
-                                  }
-                                  style={[
-                                    styles.altCard,
-                                    {
-                                      backgroundColor: s.bg,
-                                      borderColor: s.border,
-                                    },
-                                  ]}
-                                >
-                                  <View
-                                    style={{
-                                      flexDirection: "row",
-                                      justifyContent: "space-between",
-                                      alignItems: "center",
-                                      marginBottom: 4,
-                                    }}
-                                  >
-                                    <Text style={styles.altMonth}>
-                                      {alt.month}
-                                    </Text>
-                                    <ScoreBadge score={alt.growScore} />
-                                  </View>
-                                  <Text
-                                    style={[
-                                      styles.altScore,
-                                      { color: s.color },
-                                    ]}
-                                  >
-                                    {alt.growScore}
-                                    <Text style={styles.altScoreSub}>/100</Text>
-                                  </Text>
-                                  <Text style={styles.altMeta}>
-                                    {alt.avgTemp}°C · {alt.avgHumidity}% ·{" "}
-                                    {alt.totalRainfall}mm
-                                  </Text>
-                                  <Text style={styles.altTap}>
-                                    Tap to view →
-                                  </Text>
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        </View>
-                      )}
+                      ))}
                     </View>
-                  )
-                )}
-              </View>
-
-              {/* Climate Charts */}
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>
-                  Climate Charts — {selectedYear}
-                </Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={{ marginBottom: 12 }}
-                  contentContainerStyle={{ gap: 6 }}
-                >
-                  {(
-                    [
-                      ["score", "Score"],
-                      ["climate", "Temp & Hum"],
-                      ["rainfall", "Rainfall"],
-                    ] as const
-                  ).map(([tab, lbl]) => (
-                    <TouchableOpacity
-                      key={tab}
-                      onPress={() => setActiveChart(tab)}
-                      style={[
-                        styles.chartTab,
-                        activeChart === tab && styles.chartTabActive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.chartTabText,
-                          activeChart === tab && { color: colors.primary },
-                        ]}
-                      >
-                        {lbl}
+                  ) : (
+                    <View style={styles.allGoodBox}>
+                      <Text style={styles.allGoodText}>
+                        ✅ All climate conditions are within ideal range. No
+                        corrective actions needed.
                       </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                    </View>
+                  )}
 
-                {activeChart === "score" && (
-                  <MiniLineChart
-                    data={chartData.map((d) => ({
-                      label: d.label,
-                      value: d.score,
-                    }))}
-                    lineColor={colors.emerald}
-                    height={100}
-                    refLines={[
-                      { value: 80, color: colors.emerald },
-                      { value: 65, color: colors.primary },
-                      { value: 50, color: colors.red },
-                    ]}
-                  />
-                )}
-                {activeChart === "climate" && (
-                  <MultiLineChart
-                    data={chartData.map((d) => ({
-                      month: d.label,
-                      temp: d.temp,
-                      humidity: d.humidity,
-                    }))}
-                    lines={[
-                      { key: "temp", color: colors.orange, label: "Temp °C" },
-                      {
-                        key: "humidity",
-                        color: colors.cyan,
-                        label: "Humidity %",
-                      },
-                    ]}
-                    height={100}
-                  />
-                )}
-                {activeChart === "rainfall" && (
-                  <MiniLineChart
-                    data={chartData.map((d) => ({
-                      label: d.label,
-                      value: d.rainfall,
-                    }))}
-                    lineColor={colors.primary}
-                    height={100}
-                    refLines={[
-                      { value: IDEAL.rainMax, color: colors.red },
-                      { value: IDEAL.rainMin, color: colors.emerald },
-                    ]}
-                  />
-                )}
-
-                {/* Chart x-labels */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    marginTop: 8,
-                  }}
-                >
-                  {chartData
-                    .filter((_, i) => i % 2 === 0 || chartData.length <= 6)
-                    .map((d, i) => (
-                      <Text
-                        key={i}
-                        style={{
-                          fontSize: 9,
-                          color: colors.grayText,
-                          fontFamily: fonts.regular,
-                        }}
-                      >
-                        {d.label}
+                  {/* Alternatives */}
+                  {monthReco.alternatives.length > 0 && (
+                    <View>
+                      <Text style={styles.sectionLabel}>
+                        {selectedRecord.growScore >= 80
+                          ? `OTHER STRONG MONTHS IN ${selectedYear}`
+                          : `BETTER ALTERNATIVES IN ${selectedYear}`}
                       </Text>
-                    ))}
-                </View>
-
-                <View
-                  style={{
-                    flexDirection: "row",
-                    flexWrap: "wrap",
-                    gap: 10,
-                    marginTop: 10,
-                    borderTopWidth: 1,
-                    borderTopColor: colors.grayBorder,
-                    paddingTop: 10,
-                  }}
-                >
-                  {activeChart === "score" && (
-                    <>
                       <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
+                        style={{ flexDirection: "row", gap: 10, marginTop: 6 }}
                       >
-                        <View
-                          style={{
-                            width: 16,
-                            height: 2,
-                            backgroundColor: colors.emerald,
-                          }}
-                        />
-                        <Text style={styles.legendSmall}>80 = Excellent</Text>
+                        {monthReco.alternatives.map((alt, i) => {
+                          const s = getScoreStyle(alt.growScore);
+                          return (
+                            <TouchableOpacity
+                              key={i}
+                              onPress={() => setSelectedMonth(alt.shortLabel)}
+                              style={[
+                                styles.altCard,
+                                {
+                                  backgroundColor: s.bg,
+                                  borderColor: s.border,
+                                },
+                              ]}
+                            >
+                              <View
+                                style={{
+                                  flexDirection: "row",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  marginBottom: 4,
+                                }}
+                              >
+                                <Text style={styles.altMonth}>{alt.month}</Text>
+                                <ScoreBadge score={alt.growScore} />
+                              </View>
+                              <Text
+                                style={[styles.altScore, { color: s.color }]}
+                              >
+                                {alt.growScore}
+                                <Text style={styles.altScoreSub}>/100</Text>
+                              </Text>
+                              <Text style={styles.altMeta}>
+                                {alt.avgTemp}°C · {alt.avgHumidity}% ·{" "}
+                                {alt.totalRainfall}mm
+                              </Text>
+                              <Text style={styles.altTap}>Tap to view →</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
                       </View>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 16,
-                            height: 2,
-                            backgroundColor: colors.primary,
-                          }}
-                        />
-                        <Text style={styles.legendSmall}>65 = Good</Text>
-                      </View>
-                    </>
-                  )}
-                  {activeChart === "climate" && (
-                    <>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 16,
-                            height: 2,
-                            backgroundColor: colors.orange,
-                          }}
-                        />
-                        <Text style={styles.legendSmall}>Temp °C</Text>
-                      </View>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 16,
-                            height: 2,
-                            backgroundColor: colors.cyan,
-                          }}
-                        />
-                        <Text style={styles.legendSmall}>Humidity %</Text>
-                      </View>
-                    </>
-                  )}
-                  {activeChart === "rainfall" && (
-                    <>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 16,
-                            height: 2,
-                            backgroundColor: colors.red,
-                          }}
-                        />
-                        <Text style={styles.legendSmall}>100mm max ideal</Text>
-                      </View>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 16,
-                            height: 2,
-                            backgroundColor: colors.emerald,
-                          }}
-                        />
-                        <Text style={styles.legendSmall}>20mm min ideal</Text>
-                      </View>
-                    </>
+                    </View>
                   )}
                 </View>
-              </View>
+              )
+            )}
+          </View>
 
-              <View style={{ height: 32 }} />
-            </Animated.ScrollView>
-          )}
-        </>
-      )}
-
-      {/* ══ REGIONAL TAB ══ */}
-      {activeTab === "regional" && (
-        <>
-          {regionalLoading ? (
-            <View style={styles.loader}>
-              <ActivityIndicator size="large" color={colors.emerald} />
-              <Text style={styles.loaderText}>
-                Fetching {regionalYear} data for{" "}
-                {Object.values(REGIONS).reduce(
-                  (s, r) => s + r.stations.length,
-                  0,
-                )}{" "}
-                stations…
-              </Text>
-              <Text style={[styles.loaderText, { fontSize: 11 }]}>
-                This may take 15–30 seconds
-              </Text>
-            </View>
-          ) : regionalError ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{regionalError}</Text>
-              <TouchableOpacity
-                onPress={() => setRegionalYear((v) => v)}
-                style={styles.retryBtn}
-              >
-                <Text style={styles.retryBtnText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <Animated.ScrollView
-              style={[styles.scroll, { opacity: fadeAnim }]}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
+          {/* Climate Charts */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>
+              Climate Charts — {selectedYear}
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 12 }}
+              contentContainerStyle={{ gap: 6 }}
             >
-              {/* Controls */}
-              <View style={styles.controlsRow}>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ gap: 6 }}
-                >
-                  {[
-                    currentYear,
-                    currentYear - 1,
-                    currentYear - 2,
-                    currentYear - 3,
-                  ].map((y) => (
-                    <TouchableOpacity
-                      key={y}
-                      onPress={() => setRegionalYear(y)}
-                      style={[
-                        styles.yearChip,
-                        regionalYear === y && styles.yearChipActive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.yearChipText,
-                          regionalYear === y && { color: colors.white },
-                        ]}
-                      >
-                        {y}
-                        {y === currentYear ? " ★" : ""}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-
-              {/* Month filter */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ marginHorizontal: -16 }}
-                contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}
-              >
+              {(
+                [
+                  ["score", "Score"],
+                  ["climate", "Temp & Hum"],
+                  ["rainfall", "Rainfall"],
+                ] as const
+              ).map(([tab, lbl]) => (
                 <TouchableOpacity
-                  onPress={() => setRegionalMonth("")}
+                  key={tab}
+                  onPress={() => setActiveChart(tab)}
                   style={[
-                    styles.monthChip,
-                    !regionalMonth && styles.monthChipActive,
+                    styles.chartTab,
+                    activeChart === tab && styles.chartTabActive,
                   ]}
                 >
                   <Text
                     style={[
-                      styles.monthChipText,
-                      !regionalMonth && styles.monthChipTextActive,
+                      styles.chartTabText,
+                      activeChart === tab && { color: colors.primary },
                     ]}
                   >
-                    All Months
+                    {lbl}
                   </Text>
                 </TouchableOpacity>
-                {allAvailableMonths.map((m) => (
-                  <TouchableOpacity
-                    key={m}
-                    onPress={() =>
-                      setRegionalMonth(regionalMonth === m ? "" : m)
-                    }
-                    style={[
-                      styles.monthChip,
-                      regionalMonth === m && styles.monthChipActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.monthChipText,
-                        regionalMonth === m && styles.monthChipTextActive,
-                      ]}
-                    >
-                      {m}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              ))}
+            </ScrollView>
 
-              {/* Banner */}
-              <View
-                style={[
-                  styles.card,
-                  { backgroundColor: "#F0FDF4", borderColor: "#86EFAC" },
+            {activeChart === "score" && (
+              <MiniLineChart
+                data={chartData.map((d) => ({
+                  label: d.label,
+                  value: d.score,
+                }))}
+                lineColor={colors.emerald}
+                height={100}
+                refLines={[
+                  { value: 80, color: colors.emerald },
+                  { value: 65, color: colors.primary },
+                  { value: 50, color: colors.red },
                 ]}
-              >
-                <Text
-                  style={{
-                    fontFamily: fonts.semibold,
-                    fontSize: 13,
-                    color: "#166534",
-                  }}
-                >
-                  {regionalYear} Regional Climate Overview
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: fonts.regular,
-                    fontSize: 12,
-                    color: "#166534",
-                    marginTop: 2,
-                  }}
-                >
-                  {regionalMonth ? `${regionalMonth} · ` : ""}
-                  Averaged across{" "}
-                  {Object.values(REGIONS).reduce(
-                    (s, r) => s + r.stations.length,
-                    0,
-                  )}{" "}
-                  major stations in Luzon, Visayas, and Mindanao.
-                </Text>
-              </View>
+              />
+            )}
+            {activeChart === "climate" && (
+              <MultiLineChart
+                data={chartData.map((d) => ({
+                  month: d.label,
+                  temp: d.temp,
+                  humidity: d.humidity,
+                }))}
+                lines={[
+                  { key: "temp", color: colors.orange, label: "Temp °C" },
+                  { key: "humidity", color: colors.cyan, label: "Humidity %" },
+                ]}
+                height={100}
+              />
+            )}
+            {activeChart === "rainfall" && (
+              <MiniLineChart
+                data={chartData.map((d) => ({
+                  label: d.label,
+                  value: d.rainfall,
+                }))}
+                lineColor={colors.primary}
+                height={100}
+                refLines={[
+                  { value: IDEAL.rainMax, color: colors.red },
+                  { value: IDEAL.rainMin, color: colors.emerald },
+                ]}
+              />
+            )}
 
-              {/* Regional score cards */}
-              {regionalSummary.map((r) => {
-                const s = getScoreStyle(r.avgScore);
-                return (
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 8,
+              }}
+            >
+              {chartData
+                .filter((_, i) => i % 2 === 0 || chartData.length <= 6)
+                .map((d, i) => (
+                  <Text
+                    key={i}
+                    style={{
+                      fontSize: 9,
+                      color: colors.grayText,
+                      fontFamily: fonts.regular,
+                    }}
+                  >
+                    {d.label}
+                  </Text>
+                ))}
+            </View>
+
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: 10,
+                marginTop: 10,
+                borderTopWidth: 1,
+                borderTopColor: colors.grayBorder,
+                paddingTop: 10,
+              }}
+            >
+              {activeChart === "score" && (
+                <>
                   <View
-                    key={r.key}
-                    style={[
-                      styles.card,
-                      { borderColor: r.color + "40", backgroundColor: s.bg },
-                    ]}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
                   >
                     <View
                       style={{
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: 8,
+                        width: 16,
+                        height: 2,
+                        backgroundColor: colors.emerald,
                       }}
-                    >
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 12,
-                            height: 12,
-                            borderRadius: 6,
-                            backgroundColor: r.color,
-                          }}
-                        />
-                        <Text style={styles.cardTitle}>{r.label}</Text>
-                      </View>
-                      <ScoreBadge score={r.avgScore} />
-                    </View>
-                    <Text style={[styles.bigScore, { color: s.color }]}>
-                      {r.avgScore}
-                      <Text
-                        style={{
-                          fontSize: 14,
-                          color: colors.grayText,
-                          fontFamily: fonts.regular,
-                        }}
-                      >
-                        /100
-                      </Text>
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: fonts.regular,
-                        fontSize: 11,
-                        color: colors.grayText,
-                        marginTop: 4,
-                      }}
-                    >
-                      Best:{" "}
-                      {r.bestMonth
-                        ? `${r.bestMonth.month} (${r.bestMonth.growScore}/100)`
-                        : "—"}
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: fonts.regular,
-                        fontSize: 10,
-                        color: colors.grayText,
-                        marginTop: 2,
-                      }}
-                    >
-                      {r.stations.length} stations:{" "}
-                      {r.stations.map((st) => st.name).join(", ")}
-                    </Text>
-                  </View>
-                );
-              })}
-
-              {/* Regional chart */}
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>
-                  Monthly Comparison — {regionalYear}
-                  {regionalMonth ? ` · ${regionalMonth}` : ""}
-                </Text>
-                <Text style={styles.cardSub}>
-                  Luzon vs Visayas vs Mindanao — all stations averaged
-                </Text>
-
-                {/* Chart tabs */}
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={{ marginBottom: 12 }}
-                  contentContainerStyle={{ gap: 6 }}
-                >
-                  {(
-                    [
-                      ["score", "Score"],
-                      ["temp", "Temp"],
-                      ["humidity", "Humidity"],
-                      ["rainfall", "Rainfall"],
-                    ] as const
-                  ).map(([tab, lbl]) => (
-                    <TouchableOpacity
-                      key={tab}
-                      onPress={() => setRegionalChart(tab)}
-                      style={[
-                        styles.chartTab,
-                        regionalChart === tab && styles.chartTabActive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.chartTabText,
-                          regionalChart === tab && { color: colors.primary },
-                        ]}
-                      >
-                        {lbl}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-
-                {regionalChartData.length === 0 ? (
-                  <View style={styles.emptyChart}>
-                    <FontAwesome
-                      name="bar-chart"
-                      size={36}
-                      color={colors.grayText}
-                      style={{ opacity: 0.3 }}
                     />
-                    <Text style={styles.emptyChartText}>
-                      No data available for {regionalYear} yet.
-                    </Text>
+                    <Text style={styles.legendSmall}>80 = Excellent</Text>
                   </View>
-                ) : (
-                  <MultiLineChart
-                    data={regionalChartData}
-                    lines={getRegionalChartLines()}
-                    height={120}
-                    refLines={getRegionalRefLines()}
-                  />
-                )}
-
-                {/* Legend */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    flexWrap: "wrap",
-                    gap: 10,
-                    marginTop: 12,
-                    borderTopWidth: 1,
-                    borderTopColor: colors.grayBorder,
-                    paddingTop: 10,
-                  }}
-                >
-                  {(Object.keys(REGIONS) as RegionKey[]).map((key) => (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
                     <View
-                      key={key}
                       style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 4,
+                        width: 16,
+                        height: 2,
+                        backgroundColor: colors.primary,
                       }}
-                    >
-                      <View
-                        style={{
-                          width: 16,
-                          height: 2,
-                          backgroundColor: REGIONS[key].color,
-                        }}
-                      />
-                      <Text style={styles.legendSmall}>
-                        {REGIONS[key].label}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
+                    />
+                    <Text style={styles.legendSmall}>65 = Good</Text>
+                  </View>
+                </>
+              )}
+              {activeChart === "climate" && (
+                <>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 16,
+                        height: 2,
+                        backgroundColor: colors.orange,
+                      }}
+                    />
+                    <Text style={styles.legendSmall}>Temp °C</Text>
+                  </View>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 16,
+                        height: 2,
+                        backgroundColor: colors.cyan,
+                      }}
+                    />
+                    <Text style={styles.legendSmall}>Humidity %</Text>
+                  </View>
+                </>
+              )}
+              {activeChart === "rainfall" && (
+                <>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 16,
+                        height: 2,
+                        backgroundColor: colors.red,
+                      }}
+                    />
+                    <Text style={styles.legendSmall}>100mm max ideal</Text>
+                  </View>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 16,
+                        height: 2,
+                        backgroundColor: colors.emerald,
+                      }}
+                    />
+                    <Text style={styles.legendSmall}>20mm min ideal</Text>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
 
-              <View style={{ height: 32 }} />
-            </Animated.ScrollView>
-          )}
-        </>
+          <View style={{ height: 32 }} />
+        </Animated.ScrollView>
       )}
     </SafeAreaView>
   );
@@ -2172,8 +1452,6 @@ export default function PatternAnalyzerScreen() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.surface },
-
-  // Header
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -2192,34 +1470,6 @@ const styles = StyleSheet.create({
     color: colors.grayText,
     marginTop: 1,
   },
-
-  // Tab bar
-  tabBar: {
-    flexDirection: "row",
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.grayBorder,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    gap: 8,
-  },
-  tabBarBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  tabBarBtnActive: { backgroundColor: "#F0F9FF" },
-  tabBarBtnText: {
-    fontFamily: fonts.semibold,
-    fontSize: 12,
-    color: colors.grayText,
-  },
-
-  // Loader / Error
   loader: {
     flex: 1,
     alignItems: "center",
@@ -2259,12 +1509,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.white,
   },
-
-  // Scroll
   scroll: { flex: 1 },
   scrollContent: { padding: 16, gap: 12 },
-
-  // Controls
   controlsRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   controlPill: {
     flex: 1,
@@ -2312,8 +1558,6 @@ const styles = StyleSheet.create({
     color: colors.grayText,
   },
   monthChipTextActive: { color: colors.white },
-
-  // Summary row
   summaryRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2333,8 +1577,6 @@ const styles = StyleSheet.create({
   },
   summaryValue: { fontFamily: fonts.bold, fontSize: 12 },
   summaryDivider: { width: 1, height: 20, backgroundColor: colors.grayBorder },
-
-  // Best/Worst
   bestWorstRow: { flexDirection: "row", gap: 10 },
   bestWorstCard: {
     flex: 1,
@@ -2348,8 +1590,6 @@ const styles = StyleSheet.create({
   bwLabel: { fontFamily: fonts.regular, fontSize: 10, color: colors.grayText },
   bwValue: { fontFamily: fonts.bold, fontSize: 14 },
   bwSub: { fontFamily: fonts.regular, fontSize: 10, color: colors.grayText },
-
-  // Cards
   card: {
     backgroundColor: colors.white,
     borderRadius: 14,
@@ -2365,11 +1605,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 10,
   },
-
-  // Big score
   bigScore: { fontFamily: fonts.bold, fontSize: 32 },
-
-  // Metrics grid
   metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   metricCard: {
     flex: 1,
@@ -2391,8 +1627,6 @@ const styles = StyleSheet.create({
     color: colors.dark,
     marginTop: 2,
   },
-
-  // Insights
   insightRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -2409,8 +1643,6 @@ const styles = StyleSheet.create({
     color: "#475569",
     lineHeight: 18,
   },
-
-  // Verdict
   verdictCard: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -2428,16 +1660,12 @@ const styles = StyleSheet.create({
     marginTop: 3,
     lineHeight: 18,
   },
-
-  // Section label
   sectionLabel: {
     fontFamily: fonts.semibold,
     fontSize: 10,
     color: colors.grayText,
     letterSpacing: 0.5,
   },
-
-  // Flags
   flagRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -2454,7 +1682,6 @@ const styles = StyleSheet.create({
     color: "#374151",
     lineHeight: 18,
   },
-
   allGoodBox: { backgroundColor: "#F0FDF4", borderRadius: 8, padding: 10 },
   allGoodText: {
     fontFamily: fonts.regular,
@@ -2462,8 +1689,6 @@ const styles = StyleSheet.create({
     color: "#166534",
     lineHeight: 18,
   },
-
-  // Alternatives
   altCard: { flex: 1, borderRadius: 12, borderWidth: 2, padding: 10 },
   altMonth: { fontFamily: fonts.bold, fontSize: 12, color: colors.dark },
   altScore: { fontFamily: fonts.bold, fontSize: 24 },
@@ -2484,8 +1709,6 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginTop: 6,
   },
-
-  // Chart tabs
   chartTab: {
     paddingHorizontal: 14,
     paddingVertical: 7,
@@ -2498,24 +1721,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.grayText,
   },
-
-  // Legend
   legendSmall: {
     fontFamily: fonts.regular,
     fontSize: 10,
-    color: colors.grayText,
-  },
-
-  // Empty chart
-  emptyChart: {
-    alignItems: "center",
-    justifyContent: "center",
-    height: 100,
-    gap: 10,
-  },
-  emptyChartText: {
-    fontFamily: fonts.regular,
-    fontSize: 13,
     color: colors.grayText,
   },
 });

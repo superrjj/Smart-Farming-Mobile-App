@@ -378,9 +378,11 @@ export default function DashboardScreen() {
           .order("timestamp", { ascending: false })
           .limit(1)
           .maybeSingle();
+
         if (soilData) {
           const raw = Number(soilData.value);
-          const percent = Math.round((raw / 1023) * 100);
+          // Match admin conversion: higher raw = drier (inverted ADC scale)
+          const percent = Math.round(((1023 - raw) / 1023) * 100);
           const clamped = Math.min(100, Math.max(0, percent));
           setSoilMoisturePercent(clamped);
         }
@@ -760,6 +762,8 @@ export default function DashboardScreen() {
   };
 
   // ── Irrigation status ──
+  // FIX: use strict boundaries — <=40 Wet threshold raised to avoid
+  // "Standby — Wet" triggering too early at mid-range values.
   const irrigStatus =
     soilMoisturePercent <= 25
       ? {
@@ -775,7 +779,7 @@ export default function DashboardScreen() {
             textColor: "#EA580C",
             icon: "tint" as const,
           }
-        : soilMoisturePercent <= 80
+        : soilMoisturePercent < 81
           ? {
               label: "Standby — Optimal",
               chipStyle: styles.heroChipGood,
@@ -972,7 +976,7 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {/* ── 7-Day Forecast Card (own separate card) ── */}
+          {/* ── 7-Day Forecast Card ── */}
           <View style={styles.card}>
             <View style={styles.forecastCardHeader}>
               <FontAwesome
@@ -1172,6 +1176,8 @@ export default function DashboardScreen() {
                     style={styles.subMenuItem}
                     activeOpacity={0.8}
                     onPress={() => {
+                      // FIX: close analytics dropdown and drawer before navigating
+                      setAnalyticsOpen(false);
                       setMenuOpen(false);
                       if (sub.key === "env") {
                         router.push({

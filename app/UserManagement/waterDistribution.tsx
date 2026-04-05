@@ -30,7 +30,6 @@ const fonts = {
   bold: "Poppins_700Bold",
 };
 
-// Mock data for irrigation areas
 const AREAS_DATA = [
   {
     id: 1,
@@ -49,14 +48,15 @@ export default function WaterDistributionScreen() {
 
   const handleStart = () => {
     setIsRunning(true);
+    setAreas((prev) => prev.map((a) => ({ ...a, status: "active" })));
   };
 
   const handleStop = () => {
     setIsRunning(false);
+    setAreas((prev) => prev.map((a) => ({ ...a, status: "inactive" })));
   };
 
   const handleAddArea = () => {
-    // TODO: Implement add area functionality
     console.log("Add new area");
   };
 
@@ -79,13 +79,87 @@ export default function WaterDistributionScreen() {
           <View style={styles.placeholder} />
         </View>
 
+        {/* ── Start / Stop Controls ── */}
+        <View style={styles.controlsContainer}>
+          {/* Status indicator */}
+          <View style={styles.statusRow}>
+            <View
+              style={[
+                styles.statusPulse,
+                isRunning ? styles.pulseActive : styles.pulseIdle,
+              ]}
+            />
+            <Text style={styles.statusLabel}>
+              {isRunning ? "System Running" : "System Stopped"}
+            </Text>
+          </View>
+
+          <View style={styles.buttonRow}>
+            {/* Start Button */}
+            <TouchableOpacity
+              style={[
+                styles.controlButton,
+                styles.startButton,
+                isRunning && styles.startButtonDisabled,
+              ]}
+              onPress={handleStart}
+              activeOpacity={isRunning ? 1 : 0.8}
+              disabled={isRunning}
+            >
+              <FontAwesome
+                name="play"
+                size={14}
+                color={isRunning ? colors.grayText : "#fff"}
+              />
+              <Text
+                style={[
+                  styles.controlButtonText,
+                  isRunning
+                    ? styles.controlButtonTextDisabled
+                    : styles.startButtonText,
+                ]}
+              >
+                Start
+              </Text>
+            </TouchableOpacity>
+
+            {/* Stop Button */}
+            <TouchableOpacity
+              style={[
+                styles.controlButton,
+                styles.stopButton,
+                !isRunning && styles.stopButtonDisabled,
+              ]}
+              onPress={handleStop}
+              activeOpacity={!isRunning ? 1 : 0.8}
+              disabled={!isRunning}
+            >
+              <FontAwesome
+                name="stop"
+                size={14}
+                color={!isRunning ? colors.grayText : colors.danger}
+              />
+              <Text
+                style={[
+                  styles.controlButtonText,
+                  !isRunning
+                    ? styles.controlButtonTextDisabled
+                    : styles.stopButtonText,
+                ]}
+              >
+                Stop
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Areas List */}
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {areas.map((area, index) => (
+          {areas.map((area) => (
             <View key={area.id} style={styles.areaCard}>
               <View style={styles.areaHeader}>
                 <Text style={styles.areaName}>{area.name}</Text>
@@ -137,7 +211,6 @@ export default function WaterDistributionScreen() {
                       },
                     ]}
                   />
-                  {/* Animated dots effect */}
                   {area.status === "active" && (
                     <View style={styles.dotsContainer}>
                       {[...Array(Math.floor(area.progress / 8))].map((_, i) => (
@@ -189,12 +262,16 @@ export default function WaterDistributionScreen() {
         <View style={styles.footer}>
           <View style={styles.footerStat}>
             <Text style={styles.footerStatLabel}>Total Flow</Text>
-            <Text style={styles.footerStatValue}>1.2 L/min</Text>
+            <Text style={styles.footerStatValue}>
+              {isRunning ? "1.2 L/min" : "0 L/min"}
+            </Text>
           </View>
           <View style={styles.footerDivider} />
           <View style={styles.footerStat}>
             <Text style={styles.footerStatLabel}>Active Zones</Text>
-            <Text style={styles.footerStatValue}>1/1</Text>
+            <Text style={styles.footerStatValue}>
+              {isRunning ? "1/1" : "0/1"}
+            </Text>
           </View>
           <View style={styles.footerDivider} />
           <View style={styles.footerStat}>
@@ -240,66 +317,84 @@ const styles = StyleSheet.create({
     color: colors.dark,
     letterSpacing: 0.5,
   },
-  addButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.grayLight,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   placeholder: {
     width: 32,
   },
+
+  // ── Controls ──
   controlsContainer: {
-    flexDirection: "column",
-    alignItems: "center",
-    paddingVertical: 20,
-    paddingHorizontal: scale(40),
-    gap: 12,
     backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.grayBorder,
+    gap: 12,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  statusPulse: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  pulseActive: {
+    backgroundColor: colors.success,
+  },
+  pulseIdle: {
+    backgroundColor: colors.grayText,
+  },
+  statusLabel: {
+    fontFamily: fonts.medium,
+    fontSize: fontScale(13),
+    color: colors.dark,
+  },
+  buttonRow: {
+    flexDirection: "row",
+    gap: 12,
   },
   controlButton: {
-    width: "100%",
-    paddingVertical: 14,
-    borderRadius: 8,
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
   },
   startButton: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
-  activeButton: {
-    backgroundColor: colors.primaryDark,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  stopButton: {
-    backgroundColor: "#fff",
-    borderWidth: 2,
+  startButtonDisabled: {
+    backgroundColor: colors.grayLight,
     borderColor: colors.grayBorder,
   },
-  stopActiveButton: {
-    borderColor: colors.danger,
+  stopButton: {
     backgroundColor: "#FEF2F2",
+    borderColor: colors.danger,
+  },
+  stopButtonDisabled: {
+    backgroundColor: colors.grayLight,
+    borderColor: colors.grayBorder,
   },
   controlButtonText: {
-    fontFamily: fonts.bold,
-    fontSize: fontScale(16),
-    letterSpacing: 1,
+    fontFamily: fonts.semibold,
+    fontSize: fontScale(14),
   },
   startButtonText: {
     color: "#fff",
   },
   stopButtonText: {
-    color: colors.grayText,
-  },
-  stopActiveText: {
     color: colors.danger,
   },
+  controlButtonTextDisabled: {
+    color: colors.grayText,
+  },
+
   scroll: {
     flex: 1,
   },
