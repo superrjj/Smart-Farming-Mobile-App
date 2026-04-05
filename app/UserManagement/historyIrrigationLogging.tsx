@@ -248,6 +248,16 @@ export default function HistoryIrrigationLoggingScreen() {
           ))}
         </View>
       </ScrollView>
+
+      {/* Floating Action Buttons */}
+      <View style={styles.fab}>
+        <TouchableOpacity style={styles.fabBtn} accessibilityLabel="Alert">
+          <FontAwesome name="exclamation" size={16} color={colors.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.fabBtn} accessibilityLabel="Help">
+          <FontAwesome name="question" size={16} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -264,7 +274,6 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: colors.white,
@@ -277,12 +286,12 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontFamily: fonts.semibold,
-    fontSize: 16,
+    fontSize: 18,
     color: colors.dark,
-    textAlign: "center",
     position: "absolute",
     left: 0,
     right: 0,
+    textAlign: "center",
   },
 
   // Scroll

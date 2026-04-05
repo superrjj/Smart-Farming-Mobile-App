@@ -241,7 +241,6 @@ const BarChart = ({
 }) => {
   const maxVal = Math.max(...data.map((d) => d.value), 1);
   const BAR_W = Math.max(20, (SCREEN_W - 64) / data.length - 4);
-
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
       <View
@@ -325,6 +324,284 @@ const BarChart = ({
         ))}
       </View>
     </ScrollView>
+  );
+};
+
+// ── Irrigation Report Card ────────────────────────────────────────────────────
+const IrrigationReportCard = ({
+  visibleMonths,
+  selectedYear,
+  isCurrentYear,
+  currentMonth,
+}: {
+  visibleMonths: MonthData[];
+  selectedYear: number;
+  isCurrentYear: boolean;
+  currentMonth: number;
+}) => {
+  const activeMonths = visibleMonths.filter((m) => m.irrigationNeed > 0);
+  const totalIrrigation = Math.round(
+    activeMonths.reduce((s, m) => s + m.irrigationNeed, 0),
+  );
+  const peakMonth = activeMonths.reduce<MonthData | null>(
+    (a, b) => (!a || b.irrigationNeed > a.irrigationNeed ? b : a),
+    null,
+  );
+  const criticalMonths = activeMonths.filter((m) => m.irrigationNeed > 60);
+  const moderateMonths = activeMonths.filter(
+    (m) => m.irrigationNeed > 20 && m.irrigationNeed <= 60,
+  );
+  const sufficientMonths = visibleMonths.filter(
+    (m) => m.irrigationNeed === 0 && m.rainfall > 0,
+  );
+
+  const getIrrigLevel = (
+    need: number,
+  ): { label: string; color: string; bg: string } => {
+    if (need > 60)
+      return { label: "Critical", color: colors.red, bg: "#FEF2F2" };
+    if (need > 20)
+      return { label: "Moderate", color: colors.amber, bg: "#FFFBEB" };
+    if (need > 0) return { label: "Low", color: colors.blue, bg: "#EFF6FF" };
+    return { label: "Sufficient", color: colors.primary, bg: "#F0FDF4" };
+  };
+
+  // Summary stat items as a 2×2 grid — no dividers, no overflow
+  const summaryStats = [
+    {
+      value: String(totalIrrigation),
+      label: "Total mm needed",
+      color: colors.dark,
+    },
+    {
+      value: String(criticalMonths.length),
+      label: "Critical months",
+      color: colors.red,
+    },
+    {
+      value: String(moderateMonths.length),
+      label: "Moderate months",
+      color: colors.amber,
+    },
+    {
+      value: String(sufficientMonths.length),
+      label: "Rain-sufficient",
+      color: colors.primary,
+    },
+  ];
+
+  return (
+    <View style={styles.card}>
+      {/* ── Card Header ── */}
+      <View style={styles.irrigCardHeader}>
+        <View style={styles.irrigCardIconWrap}>
+          <FontAwesome name="bar-chart" size={15} color={colors.blue} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitle}>
+            Irrigation Report — {selectedYear}
+          </Text>
+          <Text style={styles.cardSub} numberOfLines={2}>
+            {isCurrentYear ? `Jan–${MONTH_LABELS[currentMonth]} · ` : ""}
+            Supplemental water requirement analysis
+          </Text>
+        </View>
+      </View>
+
+      {/* ── 2×2 Summary Grid (no dividers, scales naturally) ── */}
+      <View style={styles.irrigGrid}>
+        {summaryStats.map((s, i) => (
+          <View key={i} style={styles.irrigGridItem}>
+            <Text style={[styles.irrigGridValue, { color: s.color }]}>
+              {s.value}
+            </Text>
+            <Text style={styles.irrigGridLabel}>{s.label}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* ── Peak month callout ── */}
+      {peakMonth && (
+        <View style={styles.peakCallout}>
+          <FontAwesome
+            name="exclamation-triangle"
+            size={13}
+            color={colors.red}
+          />
+          <Text style={styles.peakCalloutText}>
+            <Text style={{ fontFamily: fonts.semibold, color: colors.red }}>
+              {peakMonth.month}
+            </Text>{" "}
+            needs the most supplemental irrigation — estimated{" "}
+            <Text style={{ fontFamily: fonts.semibold }}>
+              {peakMonth.irrigationNeed}mm
+            </Text>{" "}
+            above natural rainfall.
+          </Text>
+        </View>
+      )}
+
+      {/* ── Monthly breakdown — card-per-row layout, no table ── */}
+      <Text style={[styles.sectionLabel, { marginTop: 8, marginBottom: 8 }]}>
+        MONTHLY BREAKDOWN
+      </Text>
+      <View style={{ gap: 6 }}>
+        {visibleMonths.map((m, i) => {
+          const lvl = getIrrigLevel(m.irrigationNeed);
+          const hasData = m.rainfall > 0 || m.irrigationNeed > 0;
+          return (
+            <View
+              key={i}
+              style={[
+                styles.irrigMonthRow,
+                { backgroundColor: i % 2 === 0 ? colors.white : "#F8FAFC" },
+              ]}
+            >
+              {/* Month name */}
+              <Text style={styles.irrigMonthName}>{m.month}</Text>
+
+              {/* Middle: rainfall label + progress bar */}
+              <View style={styles.irrigMonthMiddle}>
+                <View style={styles.irrigMonthMeta}>
+                  <Text style={styles.irrigMonthRain}>
+                    {hasData ? `${m.rainfall}mm rain` : "No data"}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.irrigMonthNeed,
+                      { color: hasData ? lvl.color : colors.grayText },
+                    ]}
+                  >
+                    {hasData
+                      ? m.irrigationNeed > 0
+                        ? `+${m.irrigationNeed}mm needed`
+                        : "Sufficient"
+                      : "—"}
+                  </Text>
+                </View>
+                {hasData && (
+                  <ProgressBar
+                    value={Math.min(100, m.irrigationNeed)}
+                    color={lvl.color}
+                  />
+                )}
+              </View>
+
+              {/* Badge */}
+              <View
+                style={[
+                  styles.irrigMonthBadge,
+                  { backgroundColor: hasData ? lvl.bg : "#F1F5F9" },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.irrigMonthBadgeText,
+                    { color: hasData ? lvl.color : colors.grayText },
+                  ]}
+                >
+                  {hasData ? lvl.label : "—"}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* ── Scheduling recommendations ── */}
+      <View style={{ marginTop: 14, gap: 8 }}>
+        <Text style={styles.sectionLabel}>SCHEDULING RECOMMENDATIONS</Text>
+
+        {criticalMonths.length > 0 && (
+          <View
+            style={[
+              styles.irrigTip,
+              { backgroundColor: "#FEF2F2", borderColor: "#FCA5A5" },
+            ]}
+          >
+            <Text style={styles.irrigTipEmoji}>🚨</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.irrigTipTitle, { color: colors.red }]}>
+                Priority Irrigation Required
+              </Text>
+              <Text style={styles.irrigTipText}>
+                {criticalMonths.map((m) => m.month).join(", ")} — schedule daily
+                or every-other-day irrigation. Target 20–25mm per session. Check
+                soil moisture before each cycle.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {moderateMonths.length > 0 && (
+          <View
+            style={[
+              styles.irrigTip,
+              { backgroundColor: "#FFFBEB", borderColor: "#FDE68A" },
+            ]}
+          >
+            <Text style={styles.irrigTipEmoji}>💧</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.irrigTipTitle, { color: colors.amber }]}>
+                Supplemental Irrigation Needed
+              </Text>
+              <Text style={styles.irrigTipText}>
+                {moderateMonths.map((m) => m.month).join(", ")} — irrigate 2–3×
+                per week. Use mulching to retain moisture between sessions.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {sufficientMonths.length > 0 && (
+          <View
+            style={[
+              styles.irrigTip,
+              { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" },
+            ]}
+          >
+            <Text style={styles.irrigTipEmoji}>✅</Text>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[styles.irrigTipTitle, { color: colors.primaryDark }]}
+              >
+                Rainfall Sufficient
+              </Text>
+              <Text style={styles.irrigTipText}>
+                {sufficientMonths.map((m) => m.month).join(", ")} — natural
+                rainfall meets crop needs. Monitor drainage to prevent
+                waterlogging.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        <View
+          style={[
+            styles.irrigTip,
+            { backgroundColor: "#F8FAFC", borderColor: colors.grayBorder },
+          ]}
+        >
+          <Text style={styles.irrigTipEmoji}>📅</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.irrigTipTitle, { color: colors.dark }]}>
+              Annual Planning Tip
+            </Text>
+            <Text style={styles.irrigTipText}>
+              Total estimated supplemental need for{" "}
+              {isCurrentYear
+                ? `Jan–${MONTH_LABELS[currentMonth]}`
+                : String(selectedYear)}{" "}
+              is{" "}
+              <Text style={{ fontFamily: fonts.semibold }}>
+                {totalIrrigation}mm
+              </Text>
+              . Plan water reserves accordingly before the dry season begins.
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
   );
 };
 
@@ -447,7 +724,7 @@ export default function SeasonalSummaryScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* ── Header (title + back only) ── */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <TouchableOpacity
@@ -456,25 +733,23 @@ export default function SeasonalSummaryScreen() {
           >
             <FontAwesome name="chevron-left" size={16} color={colors.dark} />
           </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>Seasonal Summary</Text>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 4,
-                marginTop: 1,
-              }}
-            >
-              <FontAwesome name="map-marker" size={11} color={colors.blue} />
-              <Text style={styles.headerSub}>{LOCATION.name}</Text>
-            </View>
-          </View>
+          <Text style={styles.headerTitle}>Seasonal Summary</Text>
         </View>
       </View>
 
-      {/* ── Year Chips — outside header, below it ── */}
+      {/* Year chips — location above chips, no bottom divider */}
       <View style={styles.yearBar}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            marginBottom: 8,
+          }}
+        >
+          <FontAwesome name="map-marker" size={11} color={colors.blue} />
+          <Text style={styles.headerSub}>{LOCATION.name}</Text>
+        </View>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -580,7 +855,6 @@ export default function SeasonalSummaryScreen() {
             <Text style={styles.cardSub}>
               {LOCATION.name} · Open-Meteo archive data
             </Text>
-
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -606,9 +880,7 @@ export default function SeasonalSummaryScreen() {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-
             <BarChart data={activeData} color={activeColor} height={130} />
-
             {activeChart === "rainfall" && (
               <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
                 <View
@@ -639,7 +911,6 @@ export default function SeasonalSummaryScreen() {
                 </View>
               </View>
             )}
-
             <View style={styles.chartNote}>
               <Text style={styles.chartNoteText}>{chartNote[activeChart]}</Text>
             </View>
@@ -655,7 +926,6 @@ export default function SeasonalSummaryScreen() {
                 Jan–{MONTH_LABELS[currentMonth]} only
               </Text>
             )}
-
             <View style={styles.tableHeader}>
               <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Month</Text>
               <Text
@@ -686,7 +956,6 @@ export default function SeasonalSummaryScreen() {
                 Status
               </Text>
             </View>
-
             {visibleMonths.map((m, i) => {
               const scLevel =
                 m.scarcityIndex > 60
@@ -812,6 +1081,14 @@ export default function SeasonalSummaryScreen() {
             </View>
           </View>
 
+          {/* ── Irrigation Report Card ── */}
+          <IrrigationReportCard
+            visibleMonths={visibleMonths}
+            selectedYear={selectedYear}
+            isCurrentYear={isCurrentYear}
+            currentMonth={currentMonth}
+          />
+
           {/* Farming Tips Card */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Farming Tips for Tarlac</Text>
@@ -880,8 +1157,6 @@ export default function SeasonalSummaryScreen() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.surface },
-
-  // ── Header (title + back only — no year chips) ──
   header: {
     backgroundColor: colors.white,
     borderBottomWidth: 1,
@@ -895,11 +1170,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  headerTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
+  headerTop: { flexDirection: "row", alignItems: "center", gap: 10 },
   backButton: { padding: 6 },
   headerTitle: { fontFamily: fonts.semibold, fontSize: 16, color: colors.dark },
   headerSub: {
@@ -908,47 +1179,32 @@ const styles = StyleSheet.create({
     color: colors.grayText,
     marginTop: 1,
   },
-
-  // ── Year chips bar — separate from header ──
   yearBar: {
     backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.grayBorder,
     paddingVertical: 10,
     paddingHorizontal: 16,
   },
-  yearRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
+  yearRow: { flexDirection: "row", gap: 8 },
   yearChip: {
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
     backgroundColor: colors.surface,
   },
-  yearChipActive: {
-    backgroundColor: colors.primary,
-  },
+  yearChipActive: { backgroundColor: colors.primary },
   yearChipText: {
     fontFamily: fonts.medium,
     fontSize: 12,
     color: colors.grayText,
   },
-
-  // ── Loader ──
   loader: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   loaderText: {
     fontFamily: fonts.regular,
     fontSize: 13,
     color: colors.grayText,
   },
-
-  // ── Scroll ──
   scroll: { flex: 1 },
   scrollContent: { padding: 16, gap: 14 },
-
-  // ── Notice ──
   noticeBanner: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -966,8 +1222,6 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 18,
   },
-
-  // ── Stat cards ──
   statCard: {
     backgroundColor: colors.cardBg,
     borderRadius: 14,
@@ -997,8 +1251,6 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   statSub: { fontFamily: fonts.regular, fontSize: 10, color: colors.grayText },
-
-  // ── Cards ──
   card: {
     backgroundColor: colors.cardBg,
     borderRadius: 16,
@@ -1018,8 +1270,6 @@ const styles = StyleSheet.create({
     color: colors.grayText,
     marginBottom: 12,
   },
-
-  // ── Chart tabs ──
   tab: {
     paddingHorizontal: 14,
     paddingVertical: 7,
@@ -1044,8 +1294,6 @@ const styles = StyleSheet.create({
     color: "#64748B",
     lineHeight: 16,
   },
-
-  // ── Table ──
   tableHeader: {
     flexDirection: "row",
     backgroundColor: "#0F172A",
@@ -1078,8 +1326,6 @@ const styles = StyleSheet.create({
   currentTag: { fontFamily: fonts.regular, fontSize: 9, color: colors.blue },
   badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
   badgeText: { fontFamily: fonts.semibold, fontSize: 9 },
-
-  // ── Farming tips ──
   impactCard: { borderRadius: 10, borderWidth: 1, padding: 10 },
   impactEmoji: { fontSize: 16, marginBottom: 4 },
   impactTitle: { fontFamily: fonts.semibold, fontSize: 12, marginBottom: 3 },
@@ -1088,5 +1334,136 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#64748B",
     lineHeight: 16,
+  },
+
+  // ── Irrigation Report styles ──
+  irrigCardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 12,
+  },
+  irrigCardIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  // 2×2 grid — no dividers, adapts to any screen width
+  irrigGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
+  irrigGridItem: {
+    width: "47%",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.grayBorder,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 2,
+  },
+  irrigGridValue: {
+    fontFamily: fonts.bold,
+    fontSize: 22,
+    color: colors.dark,
+  },
+  irrigGridLabel: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: colors.grayText,
+    flexWrap: "wrap",
+  },
+  // Monthly row — horizontal with progress bar, no fixed-flex table
+  irrigMonthRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  irrigMonthName: {
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    color: colors.dark,
+    width: 36,
+    flexShrink: 0,
+  },
+  irrigMonthMiddle: {
+    flex: 1,
+    gap: 4,
+  },
+  irrigMonthMeta: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  irrigMonthRain: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: colors.grayText,
+  },
+  irrigMonthNeed: {
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+  },
+  irrigMonthBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+    flexShrink: 0,
+    minWidth: 64,
+    alignItems: "center",
+  },
+  irrigMonthBadgeText: {
+    fontFamily: fonts.semibold,
+    fontSize: 10,
+  },
+  peakCallout: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+  },
+  peakCalloutText: {
+    flex: 1,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: "#7F1D1D",
+    lineHeight: 18,
+  },
+  sectionLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 10,
+    color: colors.grayText,
+    letterSpacing: 0.5,
+  },
+  irrigTip: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+  },
+  irrigTipEmoji: { fontSize: 18, lineHeight: 24 },
+  irrigTipTitle: { fontFamily: fonts.semibold, fontSize: 12, marginBottom: 3 },
+  irrigTipText: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: "#374151",
+    lineHeight: 17,
   },
 });

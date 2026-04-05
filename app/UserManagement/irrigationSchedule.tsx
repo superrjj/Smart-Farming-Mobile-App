@@ -71,6 +71,7 @@ function getFirstDayOfMonth(month: number, year: number) {
   return new Date(year, month, 1).getDay();
 }
 
+/** YYYY-MM-DD from calendar fields — never use Date#toISOString() for `scheduled_date` (UTC shifts the day). */
 function toScheduledDateString(
   year: number,
   month1Based: number,
@@ -300,8 +301,9 @@ export default function IrrigationScheduleScreen() {
         else if (data.sensor_id === 2) setHumidity(data.value);
         else if (data.sensor_id === 3) {
           const raw = Number(data.value);
-          const percent = Math.round((raw / 1023) * 100);
-          const clamped = Math.min(100, Math.max(0, percent));
+          const percent = raw <= 1 ? raw * 100 : raw;
+          const rounded = Math.round(percent);
+          const clamped = Math.min(100, Math.max(0, rounded));
           setSoilMoisture(clamped);
         }
       });
@@ -312,7 +314,7 @@ export default function IrrigationScheduleScreen() {
 
   useEffect(() => {
     fetchLatestSensorData();
-    const interval = setInterval(fetchLatestSensorData, 30000);
+    const interval = setInterval(fetchLatestSensorData, 30000); // refresh every 30s
     return () => clearInterval(interval);
   }, []);
 
@@ -468,6 +470,7 @@ export default function IrrigationScheduleScreen() {
     }
   };
 
+  /** Reschedule local notifications from all future irrigation rows (not just the visible month). */
   const syncIrrigationNotifications = async (scheduleId: string) => {
     try {
       const granted = await requestNotificationPermissions();
@@ -701,6 +704,7 @@ export default function IrrigationScheduleScreen() {
     setAddScheduleModalVisible(true);
   };
 
+  /** Keep `irrigation_time_schedules` in sync (varchar(10) per DB). No duplicates per (schedule_id, time). */
   const syncTimeScheduleTemplates = async (
     scheduleId: string,
     timeStrings: string[],
@@ -717,18 +721,13 @@ export default function IrrigationScheduleScreen() {
         .eq("time", t)
         .maybeSingle();
       if (existing) continue;
-      const { error } = await supabase
-        .from("irrigation_time_schedules")
-        .insert({
-          schedule_id: scheduleId,
-          time: t,
-          enabled: true,
-        });
+      const { error } = await supabase.from("irrigation_time_schedules").insert({
+        schedule_id: scheduleId,
+        time: t,
+        enabled: true,
+      });
       if (error) {
-        console.warn(
-          "[irrigationSchedule] irrigation_time_schedules insert:",
-          error.message,
-        );
+        console.warn("[irrigationSchedule] irrigation_time_schedules insert:", error.message);
       }
     }
   };
@@ -876,7 +875,6 @@ export default function IrrigationScheduleScreen() {
     setSelectedHour(hour);
     setSelectedMinute(minute);
   };
-
   const handleAddTime = () => {
     setEditingTimeIndex(null);
     setNewScheduleTime("08:00");
@@ -1020,6 +1018,7 @@ export default function IrrigationScheduleScreen() {
     return s;
   };
 
+  // Get today's scheduled times list for TIME SCHEDULE card
   const todayTimes = getTodayScheduledTimes();
 
   if (loading) {
@@ -1172,28 +1171,28 @@ export default function IrrigationScheduleScreen() {
             </View>
           </View>
 
-          {/* ── Sensor Cards — matched to dashboard colors ── */}
+          {/* ── Sensor Cards ── */}
           <SensorCard
             label="Soil Moisture"
             value={soilMoisture}
             max={100}
             unit="%"
-            trackColor="#D1FAE5"
-            fillColor="#10B981"
-            icon="globe"
-            iconColor="#22C55E"
-            iconBg="#DCFCE7"
+            trackColor="#DBEAFE"
+            fillColor={colors.purple}
+            icon="tint"
+            iconColor={colors.purple}
+            iconBg={colors.purpleLight}
           />
           <SensorCard
             label="Temperature"
             value={temperature}
-            max={52}
+            max={50}
             unit="°C"
-            trackColor="#FEF3C7"
-            fillColor="#EF4444"
-            icon="thermometer"
-            iconColor="#F97316"
-            iconBg="#FFEDD5"
+            trackColor="#EDE9FE"
+            fillColor={colors.purple}
+            icon="thermometer-half"
+            iconColor={colors.purple}
+            iconBg={colors.purpleLight}
           />
           <SensorCard
             label="Humidity"
@@ -1201,10 +1200,10 @@ export default function IrrigationScheduleScreen() {
             max={100}
             unit="%"
             trackColor="#EDE9FE"
-            fillColor="#7C3AED"
-            icon="tint"
-            iconColor="#A855F7"
-            iconBg="#F3E8FF"
+            fillColor={colors.purple}
+            icon="leaf"
+            iconColor={colors.purple}
+            iconBg={colors.purpleLight}
           />
         </ScrollView>
 
@@ -1759,7 +1758,7 @@ const styles = StyleSheet.create({
   },
   timeScheduleItem: {
     fontFamily: fonts.medium,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.dark,
   },
   timeScheduleEmpty: {
@@ -1815,11 +1814,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  modalTitle: { fontFamily: fonts.bold, fontSize: 16, color: colors.dark },
+  modalTitle: { fontFamily: fonts.bold, fontSize: 20, color: colors.dark },
   inputContainer: { marginBottom: 20 },
   inputLabel: {
     fontFamily: fonts.medium,
-    fontSize: 13,
+    fontSize: 16,
     color: colors.dark,
     marginBottom: 12,
   },
@@ -1841,7 +1840,7 @@ const styles = StyleSheet.create({
   },
   dateOptionText: {
     fontFamily: fonts.medium,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.dark,
   },
   dateOptionTextSelected: { color: colors.white, fontFamily: fonts.bold },
@@ -1886,7 +1885,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.grayBorder,
   },
-  timeItemText: { fontFamily: fonts.medium, fontSize: 13, color: colors.dark },
+  timeItemText: { fontFamily: fonts.medium, fontSize: 14, color: colors.dark },
   timeItemActions: { flexDirection: "row", gap: 8 },
   timeItemButton: { padding: 4 },
   timeItemDeleteButton: { padding: 4 },
@@ -1921,7 +1920,7 @@ const styles = StyleSheet.create({
   },
   periodButtonText: {
     fontFamily: fonts.medium,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.grayText,
   },
   periodButtonTextActive: { color: colors.white },
@@ -1935,7 +1934,7 @@ const styles = StyleSheet.create({
   },
   timePickerTitle: {
     fontFamily: fonts.semibold,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.dark,
     marginBottom: 12,
   },
@@ -1968,11 +1967,10 @@ const styles = StyleSheet.create({
   timePickerOptionSelected: {
     backgroundColor: colors.primaryLight,
     borderColor: colors.primary,
-    fontSize: 13,
   },
   timePickerOptionText: {
     fontFamily: fonts.medium,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.dark,
     textAlign: "center",
   },
@@ -1992,7 +1990,7 @@ const styles = StyleSheet.create({
   },
   timePickerCancelText: {
     fontFamily: fonts.medium,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.grayText,
   },
   timePickerConfirmButton: {
@@ -2004,7 +2002,7 @@ const styles = StyleSheet.create({
   },
   timePickerConfirmText: {
     fontFamily: fonts.semibold,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.white,
   },
   addScheduleModalActions: { flexDirection: "row", gap: 12, marginTop: 24 },
@@ -2019,7 +2017,7 @@ const styles = StyleSheet.create({
   },
   cancelButtonText: {
     fontFamily: fonts.semibold,
-    fontSize: 13,
+    fontSize: 16,
     color: colors.grayText,
   },
   addButton: {
@@ -2032,7 +2030,7 @@ const styles = StyleSheet.create({
   addButtonDisabled: { backgroundColor: colors.grayText },
   addButtonText: {
     fontFamily: fonts.semibold,
-    fontSize: 13,
+    fontSize: 16,
     color: colors.white,
   },
   scheduleInfoBody: { gap: 16 },
@@ -2078,14 +2076,14 @@ const styles = StyleSheet.create({
   },
   alarmTitle: {
     fontFamily: fonts.bold,
-    fontSize: 16,
+    fontSize: 24,
     color: colors.dark,
     marginBottom: 8,
     textAlign: "center",
   },
   alarmMessage: {
     fontFamily: fonts.medium,
-    fontSize: 14,
+    fontSize: 16,
     color: colors.grayText,
     marginBottom: 24,
     textAlign: "center",
@@ -2109,7 +2107,7 @@ const styles = StyleSheet.create({
   },
   alarmOKButtonText: {
     fontFamily: fonts.bold,
-    fontSize: 14,
+    fontSize: 18,
     color: colors.white,
   },
 });
