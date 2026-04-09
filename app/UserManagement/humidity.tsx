@@ -1,9 +1,10 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Polyline } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
+import { WebView } from 'react-native-webview';
 
 import { supabase } from '@/lib/supabase';
 
@@ -26,29 +27,107 @@ const fonts = {
 };
 
 function LineChart({ data, color }: { data: number[]; color: string }) {
-  const { points } = useMemo(() => {
-    const w = 240;
-    const h = 120;
-    if (data.length === 0) return { points: '' };
-    const max = Math.max(...data);
-    const min = Math.min(...data);
-    const range = Math.max(1, max - min);
-    const stepX = data.length > 1 ? w / (data.length - 1) : 0;
-    const pts = data
-      .map((v, idx) => {
-        const x = idx * stepX;
-        const y = h - ((v - min) / range) * h;
-        return `${x},${y}`;
-      })
-      .join(' ');
-    return { points: pts };
-  }, [data]);
+  if (data.length < 2) {
+    return (
+      <View style={styles.chartShell}>
+        <View
+          style={{
+            height: 160,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}>
+          <Text
+            style={{
+              fontFamily: fonts.regular,
+              fontSize: 13,
+              color: colors.subText,
+            }}>
+            Not enough data points
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: transparent; }
+      </style>
+    </head>
+    <body>
+      <div style="position:relative; width:100%; height:160px;">
+        <canvas id="c"></canvas>
+      </div>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+      <script>
+        new Chart(document.getElementById('c'), {
+          type: 'line',
+          data: {
+            labels: ${JSON.stringify(data.map((_, i) => i + 1))},
+            datasets: [{
+              data: ${JSON.stringify(data)},
+              borderColor: '${color}',
+              borderWidth: 2.5,
+              pointRadius: 0,
+              tension: 0.35,
+              fill: false
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: {
+                min: 0,
+                max: 100,
+                ticks: {
+                  stepSize: 20,
+                  color: '#64748B',
+                  font: { size: 11 },
+                  callback: function(v) { return v + '%'; }
+                },
+                grid: {
+                  color: 'rgba(100,116,139,0.2)',
+                  lineWidth: 1
+                },
+                border: { dash: [4, 4], display: false }
+              },
+              x: {
+                ticks: {
+                  maxTicksLimit: 5,
+                  color: '#64748B',
+                  font: { size: 10 },
+                  maxRotation: 0
+                },
+                grid: {
+                  color: 'rgba(100,116,139,0.1)',
+                  lineWidth: 1
+                },
+                border: { display: false }
+              }
+            }
+          }
+        });
+      </script>
+    </body>
+    </html>
+  `;
 
   return (
-    <View style={styles.chartShell}>
-      <Svg height="140" width="100%" viewBox="0 0 240 140">
-        <Polyline points={points} fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" />
-      </Svg>
+    <View style={[styles.chartShell, { height: 160 }]}>
+      <WebView
+        source={{ html }}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
+        scrollEnabled={false}
+        javaScriptEnabled={true}
+        originWhitelist={['*']}
+      />
     </View>
   );
 }
