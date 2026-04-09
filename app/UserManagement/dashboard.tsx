@@ -78,6 +78,50 @@ function getWeatherDescription(code: number): string {
   return "Cloudy";
 }
 
+function formatScheduleDateOnly(day: number, month: number, year: number): string {
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${mm}/${dd}/${year}`;
+}
+
+function formatScheduleDateFromValue(value?: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const yyyy = String(date.getFullYear());
+  return `${mm}/${dd}/${yyyy}`;
+}
+
+function normalizeScheduleTime(rawTime: string): string {
+  const value = rawTime.trim();
+  const m = value.match(/^(\d{1,2}):(\d{2})\s*([aApP][mM])$/);
+  if (!m) return value;
+  return `${m[1]}:${m[2]} ${m[3].toUpperCase()}`;
+}
+
+function toYmdLocal(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function getSoilSeverity(percent: number): string {
+  if (percent < 40) return "Dry";
+  if (percent <= 80) return "Optimal";
+  return "Wet";
+}
+
+function getHumiditySeverity(value: number): string {
+  if (value < 30) return "Low";
+  if (value <= 50) return "Ideal";
+  if (value <= 60) return "Moderate";
+  if (value <= 70) return "High";
+  return "Severe";
+}
+
 // ── Design tokens ───────────────────────────────────────────────────────────
 const colors = {
   brandGreen: "#3E9B4F",
@@ -344,6 +388,7 @@ export default function DashboardScreen() {
   const [soilMoisturePercent, setSoilMoisturePercent] = useState<number>(0);
   const [temperatureValue, setTemperatureValue] = useState<number>(0);
   const [humidityPercent, setHumidityPercent] = useState<number>(0);
+  const [sensorLoading, setSensorLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -418,6 +463,8 @@ export default function DashboardScreen() {
         }
       } catch (error) {
         console.error("Error fetching sensor data:", error);
+      } finally {
+        setSensorLoading(false);
       }
     };
 
@@ -438,14 +485,17 @@ export default function DashboardScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
-  const [nextScheduleTime, setNextScheduleTime] =
-    useState<string>("No scheduled time");
+  const [nextScheduleTime, setNextScheduleTime] = useState<string>("");
+  const [scheduleLoading, setScheduleLoading] = useState(true);
   const drawerX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
 
   const timeToMinutes = (timeStr: string): number => {
     try {
-      const [time, period] = timeStr.trim().split(" ");
+      const normalized = normalizeScheduleTime(timeStr);
+      const [time, periodRaw] = normalized.split(" ");
+      const period = (periodRaw || "").toUpperCase();
       const [hour, minute] = time.split(":").map(Number);
+      if (Number.isNaN(hour) || Number.isNaN(minute)) return -1;
       let total = hour * 60 + minute;
       if (period === "PM" && hour !== 12) total += 12 * 60;
       else if (period === "AM" && hour === 12) total -= 12 * 60;
@@ -456,78 +506,82 @@ export default function DashboardScreen() {
   };
 
   const fetchNextSchedule = useCallback(async (uid: string) => {
+    setScheduleLoading(true);
     try {
-      const { data: scheduleData } = await supabase
+      const { data: userSchedules } = await supabase
         .from("irrigation_schedules")
         .select("id")
         .eq("user_id", uid)
         .eq("is_active", true)
-        .maybeSingle();
+        .limit(10);
 
-      if (!scheduleData) {
+      const scheduleIds = [
+        ...(userSchedules ?? []).map((s) => String(s.id)),
+      ];
+
+      if (scheduleIds.length === 0) {
+        const { data: userSchedulesAny } = await supabase
+          .from("irrigation_schedules")
+          .select("id")
+          .eq("user_id", uid)
+          .limit(10);
+        scheduleIds.push(...(userSchedulesAny ?? []).map((s) => String(s.id)));
+      }
+
+      if (scheduleIds.length === 0) {
         setNextScheduleTime("No scheduled time");
         return;
       }
 
       const now = new Date();
-      const todayDay = now.getDate();
-      const todayMonth = now.getMonth() + 1;
-      const todayYear = now.getFullYear();
+      const todayYmd = toYmdLocal(now);
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-      const { data: todayRows } = await supabase
+      const { data: scheduleRows } = await supabase
         .from("irrigation_scheduled_dates")
-        .select("time")
-        .eq("schedule_id", scheduleData.id)
-        .eq("day", todayDay)
-        .eq("month", todayMonth)
-        .eq("year", todayYear)
-        .order("time");
+        .select("schedule_id, time, scheduled_date, day, month, year, approval_status")
+        .in("schedule_id", scheduleIds)
+        .gte("scheduled_date", todayYmd)
+        .order("scheduled_date", { ascending: true })
+        .order("time", { ascending: true });
 
-      if (todayRows && todayRows.length > 0) {
-        const upcoming = todayRows
-          .map((r) => r.time as string)
-          .filter((t) => t && t !== "Not set")
-          .sort((a, b) => timeToMinutes(a) - timeToMinutes(b))
-          .find((t) => timeToMinutes(t) > currentMinutes);
-        if (upcoming) {
-          setNextScheduleTime(upcoming);
-          return;
-        }
-      }
-
-      const { data: futureRows } = await supabase
-        .from("irrigation_scheduled_dates")
-        .select("day, month, year, time")
-        .eq("schedule_id", scheduleData.id)
-        .gte("year", todayYear)
-        .order("year")
-        .order("month")
-        .order("day")
-        .order("time");
-
-      if (futureRows && futureRows.length > 0) {
-        const future = futureRows.find((r) => {
-          if (!r.time || r.time === "Not set") return false;
-          const rDate = new Date(r.year, r.month - 1, r.day);
-          const today = new Date(todayYear, todayMonth - 1, todayDay);
-          rDate.setHours(0, 0, 0, 0);
-          today.setHours(0, 0, 0, 0);
-          if (rDate > today) return true;
-          if (rDate.getTime() === today.getTime())
-            return timeToMinutes(r.time) > currentMinutes;
-          return false;
+      const nextRow = (scheduleRows ?? [])
+        .filter(
+          (r) =>
+            r.time &&
+            r.time !== "Not set" &&
+            (r.approval_status === null ||
+              String(r.approval_status).toLowerCase() !== "rejected"),
+        )
+        .find((r) => {
+          const dateValue =
+            String(r.scheduled_date ?? "") ||
+            toYmdLocal(new Date(Number(r.year), Number(r.month) - 1, Number(r.day)));
+          if (dateValue > todayYmd) return true;
+          if (dateValue < todayYmd) return false;
+          return timeToMinutes(String(r.time)) > currentMinutes;
         });
-        if (future) {
-          setNextScheduleTime(future.time);
-          return;
-        }
+
+      if (nextRow) {
+        const dateText =
+          formatScheduleDateFromValue(String(nextRow.scheduled_date ?? "")) ??
+          formatScheduleDateOnly(
+            Number(nextRow.day),
+            Number(nextRow.month),
+            Number(nextRow.year),
+          );
+        setNextScheduleTime(
+          `${dateText}, ${normalizeScheduleTime(String(nextRow.time))}`,
+        );
+        return;
       }
 
       setNextScheduleTime("No scheduled time");
     } catch (e) {
       console.error("Error fetching next schedule:", e);
       setNextScheduleTime("No scheduled time");
+    } finally {
+      setScheduleLoading(false);
     }
   }, []);
 
@@ -546,6 +600,7 @@ export default function DashboardScreen() {
     const fetchProfile = async () => {
       if (!email) {
         setLoadingName(false);
+        setScheduleLoading(false);
         return;
       }
       try {
@@ -559,9 +614,12 @@ export default function DashboardScreen() {
           setProfilePicture(data.profile_picture);
           setUserId(data.id);
           fetchNextSchedule(data.id);
+        } else {
+          setScheduleLoading(false);
         }
       } catch (error) {
         console.error("Error fetching profile:", error);
+        setScheduleLoading(false);
       } finally {
         setLoadingName(false);
       }
@@ -764,8 +822,9 @@ export default function DashboardScreen() {
   // ── Irrigation status ──
   // FIX: use strict boundaries — <=40 Wet threshold raised to avoid
   // "Standby — Wet" triggering too early at mid-range values.
-  const irrigStatus =
-    soilMoisturePercent <= 25
+  const irrigStatus = sensorLoading
+    ? null
+    : soilMoisturePercent <= 25
       ? {
           label: "Irrigating — Critical",
           chipStyle: styles.heroChipCritical,
@@ -781,13 +840,13 @@ export default function DashboardScreen() {
           }
         : soilMoisturePercent < 81
           ? {
-              label: "Standby — Optimal",
+              label: "Standby",
               chipStyle: styles.heroChipGood,
               textColor: "#059669",
               icon: "check-circle" as const,
             }
           : {
-              label: "Standby — Wet",
+              label: "Standby",
               chipStyle: styles.heroChipInfo,
               textColor: "#2563EB",
               icon: "tint" as const,
@@ -850,13 +909,23 @@ export default function DashboardScreen() {
           {/* ── System Status Hero ── */}
           <View style={styles.heroBanner}>
             <View style={styles.heroLeft}>
-              <Text style={styles.heroEyebrow}>SYSTEM STATUS</Text>
-              <Text style={styles.heroGreeting}>
-                Hi, {fullName.trim() || "Farmer"}
-              </Text>
-              <Text style={styles.heroSubtitle}>
-                Monitoring your string beans.
-              </Text>
+              {loadingName ? (
+                <>
+                  <View style={[styles.skeletonBlock, styles.heroEyebrowSkeleton]} />
+                  <View style={[styles.skeletonBlock, styles.heroGreetingSkeleton]} />
+                  <View style={[styles.skeletonBlock, styles.heroSubtitleSkeleton]} />
+                </>
+              ) : (
+                <>
+                  <Text style={styles.heroEyebrow}>SYSTEM STATUS</Text>
+                  <Text style={styles.heroGreeting}>
+                    Hi, {fullName.trim() || "Farmer"}
+                  </Text>
+                  <Text style={styles.heroSubtitle}>
+                    Monitoring your string beans.
+                  </Text>
+                </>
+              )}
             </View>
             <View style={styles.heroRight}>
               <View style={styles.heroAutoBadge}>
@@ -868,32 +937,51 @@ export default function DashboardScreen() {
 
           {/* Status chips */}
           <View style={styles.heroChipsRow}>
-            <View style={[styles.heroChip, irrigStatus.chipStyle]}>
-              <FontAwesome
-                name={irrigStatus.icon}
-                size={11}
-                color={irrigStatus.textColor}
-              />
-              <Text
-                style={[styles.heroChipText, { color: irrigStatus.textColor }]}
-              >
-                {irrigStatus.label}
-              </Text>
-            </View>
-            <View style={styles.heroChipNeutral}>
-              <FontAwesome name="clock-o" size={11} color="#6B7280" />
-              <Text style={styles.heroChipNeutralText}>
-                {nextScheduleTime === "No scheduled time"
-                  ? "No scheduled time"
-                  : `Next: ${nextScheduleTime}`}
-              </Text>
-            </View>
+            {sensorLoading || !irrigStatus ? (
+              <View style={[styles.heroChip, styles.heroChipSkeleton]}>
+                <View style={[styles.skeletonBlock, styles.chipSkeletonIcon]} />
+                <View style={[styles.skeletonBlock, styles.chipSkeletonText]} />
+              </View>
+            ) : (
+              <View style={[styles.heroChip, irrigStatus.chipStyle]}>
+                <FontAwesome
+                  name={irrigStatus.icon}
+                  size={11}
+                  color={irrigStatus.textColor}
+                />
+                <Text
+                  style={[styles.heroChipText, { color: irrigStatus.textColor }]}
+                >
+                  {irrigStatus.label}
+                </Text>
+              </View>
+            )}
+            {scheduleLoading ? (
+              <View style={[styles.heroChipNeutral, styles.heroChipSkeleton]}>
+                <View style={[styles.skeletonBlock, styles.chipSkeletonIcon]} />
+                <View style={[styles.skeletonBlock, styles.chipSkeletonText]} />
+              </View>
+            ) : (
+              <View style={styles.heroChipNeutral}>
+                <FontAwesome name="clock-o" size={11} color="#6B7280" />
+                <Text style={styles.heroChipNeutralText}>
+                  {nextScheduleTime === "No scheduled time"
+                    ? "No scheduled time"
+                    : `Next: ${nextScheduleTime}`}
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* ── Field Conditions Card ── */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Field Conditions</Text>
-            {lastUpdated && (
+            {sensorLoading ? (
+              <View style={styles.lastUpdatedSkeletonRow}>
+                <View style={[styles.skeletonBlock, styles.lastUpdatedSkeletonIcon]} />
+                <View style={[styles.skeletonBlock, styles.lastUpdatedSkeletonText]} />
+              </View>
+            ) : lastUpdated ? (
               <View
                 style={{
                   flexDirection: "row",
@@ -918,62 +1006,66 @@ export default function DashboardScreen() {
                   Last updated: {formatPHTime(lastUpdated)}
                 </Text>
               </View>
+            ) : null}
+            {sensorLoading ? (
+              <View style={styles.gaugesRow}>
+                {[0, 1, 2].map((key) => (
+                  <View key={key} style={styles.gaugeSkeletonItem}>
+                    <View style={styles.gaugeSkeletonCircle} />
+                    <View
+                      style={[styles.skeletonBlock, styles.gaugeSkeletonLabel]}
+                    />
+                    <View
+                      style={[styles.skeletonBlock, styles.gaugeSkeletonSubLabel]}
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.gaugesRow}>
+                <CircularGauge
+                  value={soilMoisturePercent}
+                  maxValue={100}
+                  gradientColors={["#34D399", "#10B981"]}
+                  label="Soil Moisture"
+                  subLabel={getSoilSeverity(soilMoisturePercent)}
+                  unit="%"
+                  icon={<FontAwesome name="globe" size={14} color="#22C55E" />}
+                />
+                <CircularGauge
+                  value={temperatureValue}
+                  maxValue={52}
+                  gradientColors={["#F59E0B", "#EF4444"]}
+                  label="Temperature"
+                  subLabel={
+                    temperatureValue < 27
+                      ? "Normal"
+                      : temperatureValue <= 32
+                        ? "Caution"
+                        : temperatureValue <= 41
+                          ? "Danger"
+                          : "Extreme Danger"
+                  }
+                  unit="°C"
+                  icon={
+                    <FontAwesome
+                      name="thermometer"
+                      size={14}
+                      color="#F97316"
+                    />
+                  }
+                />
+                <CircularGauge
+                  value={humidityPercent}
+                  maxValue={100}
+                  gradientColors={["#A78BFA", "#7C3AED"]}
+                  label="Humidity"
+                  subLabel={getHumiditySeverity(humidityPercent)}
+                  unit="%"
+                  icon={<FontAwesome name="tint" size={14} color="#A855F7" />}
+                />
+              </View>
             )}
-            <View style={styles.gaugesRow}>
-              <CircularGauge
-                value={soilMoisturePercent}
-                maxValue={100}
-                gradientColors={["#34D399", "#10B981"]}
-                label="Soil Moisture"
-                subLabel={
-                  soilMoisturePercent < 60
-                    ? "Dry"
-                    : soilMoisturePercent <= 80
-                      ? "Optimal"
-                      : "Wet"
-                }
-                unit="%"
-                icon={<FontAwesome name="globe" size={14} color="#22C55E" />}
-              />
-              <CircularGauge
-                value={temperatureValue}
-                maxValue={52}
-                gradientColors={["#F59E0B", "#EF4444"]}
-                label="Temperature"
-                subLabel={
-                  temperatureValue < 27
-                    ? "Normal"
-                    : temperatureValue <= 32
-                      ? "Caution"
-                      : temperatureValue <= 41
-                        ? "Danger"
-                        : "Extreme Danger"
-                }
-                unit="°C"
-                icon={
-                  <FontAwesome name="thermometer" size={14} color="#F97316" />
-                }
-              />
-              <CircularGauge
-                value={humidityPercent}
-                maxValue={100}
-                gradientColors={["#A78BFA", "#7C3AED"]}
-                label="Humidity"
-                subLabel={
-                  humidityPercent < 40
-                    ? "Very Low"
-                    : humidityPercent <= 55
-                      ? "Low"
-                      : humidityPercent <= 70
-                        ? "Moderate"
-                        : humidityPercent <= 80
-                          ? "High"
-                          : "Very High"
-                }
-                unit="%"
-                icon={<FontAwesome name="tint" size={14} color="#A855F7" />}
-              />
-            </View>
           </View>
 
           {/* ── 7-Day Forecast Card ── */}
@@ -989,10 +1081,15 @@ export default function DashboardScreen() {
 
             {forecastLoading ? (
               <View style={styles.forecastLoadingWrap}>
-                <ActivityIndicator size="small" color={colors.brandBlueAlt} />
-                <Text style={styles.forecastLoadingText}>
-                  Loading forecast…
-                </Text>
+                {[0, 1, 2, 3].map((key) => (
+                  <View key={key} style={styles.forecastSkeletonCard}>
+                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineSm]} />
+                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineXs]} />
+                    <View style={styles.forecastSkeletonEmoji} />
+                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineSm]} />
+                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineMd]} />
+                  </View>
+                ))}
               </View>
             ) : forecastData ? (
               <ScrollView
@@ -1316,6 +1413,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.brandGrayText,
   },
+  heroEyebrowSkeleton: {
+    width: 96,
+    height: 10,
+    marginBottom: 6,
+  },
+  heroGreetingSkeleton: {
+    width: 180,
+    height: 24,
+    marginBottom: 6,
+  },
+  heroSubtitleSkeleton: {
+    width: 210,
+    height: 13,
+  },
   heroRight: {
     alignItems: "center",
     gap: 8,
@@ -1374,6 +1485,9 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semibold,
     fontSize: 12,
   },
+  heroChipSkeleton: {
+    borderColor: "#E5E7EB",
+  },
   heroChipNeutral: {
     flexDirection: "row",
     alignItems: "center",
@@ -1389,6 +1503,18 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 12,
     color: "#6B7280",
+  },
+  skeletonBlock: {
+    backgroundColor: "#E5E7EB",
+    borderRadius: 999,
+  },
+  chipSkeletonIcon: {
+    width: 12,
+    height: 12,
+  },
+  chipSkeletonText: {
+    width: 120,
+    height: 11,
   },
 
   // ── Cards ──
@@ -1414,6 +1540,40 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     paddingVertical: 8,
   },
+  gaugeSkeletonItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: 6,
+  },
+  gaugeSkeletonCircle: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    backgroundColor: "#E5E7EB",
+  },
+  gaugeSkeletonLabel: {
+    width: 72,
+    height: 11,
+  },
+  gaugeSkeletonSubLabel: {
+    width: 56,
+    height: 10,
+  },
+  lastUpdatedSkeletonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: -6,
+    marginBottom: 8,
+  },
+  lastUpdatedSkeletonIcon: {
+    width: 11,
+    height: 11,
+  },
+  lastUpdatedSkeletonText: {
+    width: 170,
+    height: 11,
+  },
 
   // ── Forecast card ──
   forecastCardHeader: {
@@ -1436,7 +1596,36 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingVertical: 12,
+    paddingVertical: 2,
+  },
+  forecastSkeletonCard: {
+    width: 72,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  forecastSkeletonEmoji: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#E5E7EB",
+  },
+  forecastSkeletonLineXs: {
+    width: 32,
+    height: 8,
+  },
+  forecastSkeletonLineSm: {
+    width: 46,
+    height: 9,
+  },
+  forecastSkeletonLineMd: {
+    width: 54,
+    height: 9,
   },
   forecastLoadingText: {
     fontFamily: fonts.regular,

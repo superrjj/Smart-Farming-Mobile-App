@@ -83,14 +83,14 @@ const STRING_BEANS_RECOMMENDATIONS = {
 };
 
 interface WaterRequirements {
-  soilMoistureMin: number;
-  soilMoistureMax: number;
-  temperatureMin: number;
-  temperatureMax: number;
-  humidityMin: number;
-  humidityMax: number;
-  irrigationDuration: number;
-  irrigationFrequency: number;
+  soilMoistureMin: string;
+  soilMoistureMax: string;
+  temperatureMin: string;
+  temperatureMax: string;
+  humidityMin: string;
+  humidityMax: string;
+  irrigationDuration: string;
+  irrigationFrequency: string;
 }
 
 export default function WaterRequirementScreen() {
@@ -102,15 +102,14 @@ export default function WaterRequirementScreen() {
   const [saving, setSaving] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [requirements, setRequirements] = useState<WaterRequirements>({
-    soilMoistureMin: STRING_BEANS_RECOMMENDATIONS.soilMoisture.min,
-    soilMoistureMax: STRING_BEANS_RECOMMENDATIONS.soilMoisture.max,
-    temperatureMin: STRING_BEANS_RECOMMENDATIONS.temperature.min,
-    temperatureMax: STRING_BEANS_RECOMMENDATIONS.temperature.max,
-    humidityMin: STRING_BEANS_RECOMMENDATIONS.humidity.min,
-    humidityMax: STRING_BEANS_RECOMMENDATIONS.humidity.max,
-    irrigationDuration: STRING_BEANS_RECOMMENDATIONS.irrigationDuration.optimal,
-    irrigationFrequency:
-      STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.optimal,
+    soilMoistureMin: "",
+    soilMoistureMax: "",
+    temperatureMin: "",
+    temperatureMax: "",
+    humidityMin: "",
+    humidityMax: "",
+    irrigationDuration: "",
+    irrigationFrequency: "",
   });
 
   useEffect(() => {
@@ -153,9 +152,8 @@ export default function WaterRequirementScreen() {
           reqError.message?.includes("Could not find the table")
         ) {
           console.log(
-            "Water requirements table does not exist yet. Using default values.",
+            "Water requirements table does not exist yet. Keeping form empty.",
           );
-          // Table doesn't exist, use default values (already set in state)
         } else if (reqError.code !== "PGRST116") {
           // PGRST116 means no rows found, which is fine
           console.error("Error fetching requirements:", reqError);
@@ -164,30 +162,16 @@ export default function WaterRequirementScreen() {
 
       if (requirementsData) {
         setRequirements({
-          soilMoistureMin:
-            requirementsData.soil_moisture_min ||
-            STRING_BEANS_RECOMMENDATIONS.soilMoisture.min,
-          soilMoistureMax:
-            requirementsData.soil_moisture_max ||
-            STRING_BEANS_RECOMMENDATIONS.soilMoisture.max,
-          temperatureMin:
-            requirementsData.temperature_min ||
-            STRING_BEANS_RECOMMENDATIONS.temperature.min,
-          temperatureMax:
-            requirementsData.temperature_max ||
-            STRING_BEANS_RECOMMENDATIONS.temperature.max,
-          humidityMin:
-            requirementsData.humidity_min ||
-            STRING_BEANS_RECOMMENDATIONS.humidity.min,
-          humidityMax:
-            requirementsData.humidity_max ||
-            STRING_BEANS_RECOMMENDATIONS.humidity.max,
+          soilMoistureMin: requirementsData.soil_moisture_min?.toString() ?? "",
+          soilMoistureMax: requirementsData.soil_moisture_max?.toString() ?? "",
+          temperatureMin: requirementsData.temperature_min?.toString() ?? "",
+          temperatureMax: requirementsData.temperature_max?.toString() ?? "",
+          humidityMin: requirementsData.humidity_min?.toString() ?? "",
+          humidityMax: requirementsData.humidity_max?.toString() ?? "",
           irrigationDuration:
-            requirementsData.irrigation_duration ||
-            STRING_BEANS_RECOMMENDATIONS.irrigationDuration.optimal,
+            requirementsData.irrigation_duration?.toString() ?? "",
           irrigationFrequency:
-            requirementsData.irrigation_frequency ||
-            STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.optimal,
+            requirementsData.irrigation_frequency?.toString() ?? "",
         });
       }
     } catch (error) {
@@ -198,26 +182,72 @@ export default function WaterRequirementScreen() {
   };
 
   const handleSave = async () => {
+    const parseValue = (value: string, label: string): number | null => {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        Alert.alert("Error", `${label} is required`);
+        return null;
+      }
+      const parsed = Number(trimmed);
+      if (Number.isNaN(parsed)) {
+        Alert.alert("Error", `${label} must be a valid number`);
+        return null;
+      }
+      return parsed;
+    };
+
+    const soilMoistureMin = parseValue(
+      requirements.soilMoistureMin,
+      "Soil moisture minimum",
+    );
+    if (soilMoistureMin === null) return;
+    const soilMoistureMax = parseValue(
+      requirements.soilMoistureMax,
+      "Soil moisture maximum",
+    );
+    if (soilMoistureMax === null) return;
+    const temperatureMin = parseValue(
+      requirements.temperatureMin,
+      "Temperature minimum",
+    );
+    if (temperatureMin === null) return;
+    const temperatureMax = parseValue(
+      requirements.temperatureMax,
+      "Temperature maximum",
+    );
+    if (temperatureMax === null) return;
+    const humidityMin = parseValue(requirements.humidityMin, "Humidity minimum");
+    if (humidityMin === null) return;
+    const humidityMax = parseValue(requirements.humidityMax, "Humidity maximum");
+    if (humidityMax === null) return;
+    const irrigationDuration = parseValue(
+      requirements.irrigationDuration,
+      "Irrigation duration",
+    );
+    if (irrigationDuration === null) return;
+    const irrigationFrequency = parseValue(
+      requirements.irrigationFrequency,
+      "Irrigation frequency",
+    );
+    if (irrigationFrequency === null) return;
+
     // Validation
-    if (requirements.soilMoistureMin >= requirements.soilMoistureMax) {
+    if (soilMoistureMin >= soilMoistureMax) {
       Alert.alert("Error", "Minimum soil moisture must be less than maximum");
       return;
     }
 
-    if (requirements.temperatureMin >= requirements.temperatureMax) {
+    if (temperatureMin >= temperatureMax) {
       Alert.alert("Error", "Minimum temperature must be less than maximum");
       return;
     }
 
-    if (requirements.humidityMin >= requirements.humidityMax) {
+    if (humidityMin >= humidityMax) {
       Alert.alert("Error", "Minimum humidity must be less than maximum");
       return;
     }
 
-    if (
-      requirements.irrigationDuration < 5 ||
-      requirements.irrigationDuration > 60
-    ) {
+    if (irrigationDuration < 5 || irrigationDuration > 60) {
       Alert.alert(
         "Error",
         "Irrigation duration must be between 5 and 60 minutes",
@@ -225,10 +255,7 @@ export default function WaterRequirementScreen() {
       return;
     }
 
-    if (
-      requirements.irrigationFrequency < 1 ||
-      requirements.irrigationFrequency > 5
-    ) {
+    if (irrigationFrequency < 1 || irrigationFrequency > 5) {
       Alert.alert(
         "Error",
         "Irrigation frequency must be between 1 and 5 times per day",
@@ -246,14 +273,14 @@ export default function WaterRequirementScreen() {
       const { error } = await supabase.from("water_requirements").upsert(
         {
           user_id: userId,
-          soil_moisture_min: requirements.soilMoistureMin,
-          soil_moisture_max: requirements.soilMoistureMax,
-          temperature_min: requirements.temperatureMin,
-          temperature_max: requirements.temperatureMax,
-          humidity_min: requirements.humidityMin,
-          humidity_max: requirements.humidityMax,
-          irrigation_duration: requirements.irrigationDuration,
-          irrigation_frequency: requirements.irrigationFrequency,
+          soil_moisture_min: soilMoistureMin,
+          soil_moisture_max: soilMoistureMax,
+          temperature_min: temperatureMin,
+          temperature_max: temperatureMax,
+          humidity_min: humidityMin,
+          humidity_max: humidityMax,
+          irrigation_duration: irrigationDuration,
+          irrigation_frequency: irrigationFrequency,
           updated_at: new Date().toISOString(),
         },
         {
@@ -302,16 +329,20 @@ export default function WaterRequirementScreen() {
           text: "Reset",
           onPress: () => {
             setRequirements({
-              soilMoistureMin: STRING_BEANS_RECOMMENDATIONS.soilMoisture.min,
-              soilMoistureMax: STRING_BEANS_RECOMMENDATIONS.soilMoisture.max,
-              temperatureMin: STRING_BEANS_RECOMMENDATIONS.temperature.min,
-              temperatureMax: STRING_BEANS_RECOMMENDATIONS.temperature.max,
-              humidityMin: STRING_BEANS_RECOMMENDATIONS.humidity.min,
-              humidityMax: STRING_BEANS_RECOMMENDATIONS.humidity.max,
+              soilMoistureMin:
+                STRING_BEANS_RECOMMENDATIONS.soilMoisture.min.toString(),
+              soilMoistureMax:
+                STRING_BEANS_RECOMMENDATIONS.soilMoisture.max.toString(),
+              temperatureMin:
+                STRING_BEANS_RECOMMENDATIONS.temperature.min.toString(),
+              temperatureMax:
+                STRING_BEANS_RECOMMENDATIONS.temperature.max.toString(),
+              humidityMin: STRING_BEANS_RECOMMENDATIONS.humidity.min.toString(),
+              humidityMax: STRING_BEANS_RECOMMENDATIONS.humidity.max.toString(),
               irrigationDuration:
-                STRING_BEANS_RECOMMENDATIONS.irrigationDuration.optimal,
+                STRING_BEANS_RECOMMENDATIONS.irrigationDuration.optimal.toString(),
               irrigationFrequency:
-                STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.optimal,
+                STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.optimal.toString(),
             });
           },
         },
@@ -324,22 +355,24 @@ export default function WaterRequirementScreen() {
     value,
     onChange,
     unit,
-    min,
-    max,
     recommended,
     description,
+    hint,
   }: {
     label: string;
-    value: number;
-    onChange: (value: number) => void;
+    value: string;
+    onChange: (value: string) => void;
     unit: string;
-    min?: number;
-    max?: number;
     recommended?: { min: number; max: number; optimal: number };
     description?: string;
+    hint: string;
   }) => {
+    const parsed = Number(value);
     const isWithinRecommended = recommended
-      ? value >= recommended.min && value <= recommended.max
+      ? value.trim().length > 0 &&
+        !Number.isNaN(parsed) &&
+        parsed >= recommended.min &&
+        parsed <= recommended.max
       : true;
 
     return (
@@ -357,15 +390,11 @@ export default function WaterRequirementScreen() {
         <View style={styles.inputRow}>
           <TextInput
             style={[styles.input, !isWithinRecommended && styles.inputWarning]}
-            value={value.toString()}
-            onChangeText={(text) => {
-              const num = parseFloat(text) || 0;
-              if (min !== undefined && num < min) return;
-              if (max !== undefined && num > max) return;
-              onChange(num);
-            }}
+            value={value}
+            onChangeText={onChange}
             keyboardType="numeric"
-            placeholder="0"
+            placeholder={hint}
+            placeholderTextColor={colors.grayText}
           />
           <Text style={styles.unitText}>{unit}</Text>
         </View>
@@ -390,15 +419,19 @@ export default function WaterRequirementScreen() {
     unit,
     recommended,
     description,
+    minHint,
+    maxHint,
   }: {
     label: string;
-    minValue: number;
-    maxValue: number;
-    onMinChange: (value: number) => void;
-    onMaxChange: (value: number) => void;
+    minValue: string;
+    maxValue: string;
+    onMinChange: (value: string) => void;
+    onMaxChange: (value: string) => void;
     unit: string;
     recommended?: { min: number; max: number; optimal: number };
     description?: string;
+    minHint: string;
+    maxHint: string;
   }) => {
     return (
       <View style={styles.rangeGroup}>
@@ -417,13 +450,11 @@ export default function WaterRequirementScreen() {
             <Text style={styles.rangeLabel}>Min</Text>
             <TextInput
               style={styles.rangeInput}
-              value={minValue.toString()}
-              onChangeText={(text) => {
-                const num = parseFloat(text) || 0;
-                if (num >= maxValue) return;
-                onMinChange(num);
-              }}
+              value={minValue}
+              onChangeText={onMinChange}
               keyboardType="numeric"
+              placeholder={minHint}
+              placeholderTextColor={colors.grayText}
             />
             <Text style={styles.rangeUnit}>{unit}</Text>
           </View>
@@ -434,13 +465,11 @@ export default function WaterRequirementScreen() {
             <Text style={styles.rangeLabel}>Max</Text>
             <TextInput
               style={styles.rangeInput}
-              value={maxValue.toString()}
-              onChangeText={(text) => {
-                const num = parseFloat(text) || 0;
-                if (num <= minValue) return;
-                onMaxChange(num);
-              }}
+              value={maxValue}
+              onChangeText={onMaxChange}
               keyboardType="numeric"
+              placeholder={maxHint}
+              placeholderTextColor={colors.grayText}
             />
             <Text style={styles.rangeUnit}>{unit}</Text>
           </View>
@@ -504,9 +533,8 @@ export default function WaterRequirementScreen() {
               <Text style={styles.infoTitle}>String Beans Requirements</Text>
             </View>
             <Text style={styles.infoText}>
-              Configure the optimal water and environmental conditions for your
-              string beans crop. Values are pre-filled with recommended settings
-              based on agricultural research.
+              Set custom thresholds for your crop. Fields are editable and use
+              hint values as a guide. Recommended ranges are shown for reference.
             </Text>
           </View>
 
@@ -524,6 +552,8 @@ export default function WaterRequirementScreen() {
                 setRequirements({ ...requirements, soilMoistureMax: value })
               }
               unit="%"
+              minHint="e.g. 60"
+              maxHint="e.g. 80"
               recommended={STRING_BEANS_RECOMMENDATIONS.soilMoisture}
               description={
                 STRING_BEANS_RECOMMENDATIONS.soilMoisture.description
@@ -545,6 +575,8 @@ export default function WaterRequirementScreen() {
                 setRequirements({ ...requirements, temperatureMax: value })
               }
               unit="°C"
+              minHint="e.g. 20"
+              maxHint="e.g. 30"
               recommended={STRING_BEANS_RECOMMENDATIONS.temperature}
               description={STRING_BEANS_RECOMMENDATIONS.temperature.description}
             />
@@ -564,6 +596,8 @@ export default function WaterRequirementScreen() {
                 setRequirements({ ...requirements, humidityMax: value })
               }
               unit="%"
+              minHint="e.g. 50"
+              maxHint="e.g. 70"
               recommended={STRING_BEANS_RECOMMENDATIONS.humidity}
               description={STRING_BEANS_RECOMMENDATIONS.humidity.description}
             />
@@ -579,8 +613,7 @@ export default function WaterRequirementScreen() {
                 setRequirements({ ...requirements, irrigationDuration: value })
               }
               unit="minutes"
-              min={5}
-              max={60}
+              hint="e.g. 20"
               recommended={STRING_BEANS_RECOMMENDATIONS.irrigationDuration}
               description={
                 STRING_BEANS_RECOMMENDATIONS.irrigationDuration.description
@@ -593,8 +626,7 @@ export default function WaterRequirementScreen() {
                 setRequirements({ ...requirements, irrigationFrequency: value })
               }
               unit="times/day"
-              min={1}
-              max={5}
+              hint="e.g. 2"
               recommended={STRING_BEANS_RECOMMENDATIONS.irrigationFrequency}
               description={
                 STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.description
@@ -674,13 +706,16 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     gap: 16,
+    paddingBottom: 28,
   },
   infoCard: {
     backgroundColor: colors.white,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     borderLeftWidth: 4,
     borderLeftColor: colors.brandBlue,
+    borderWidth: 1,
+    borderColor: "#DBEAFE",
   },
   infoHeader: {
     flexDirection: "row",
@@ -701,9 +736,16 @@ const styles = StyleSheet.create({
   },
   section: {
     backgroundColor: colors.white,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     gap: 16,
+    borderWidth: 1,
+    borderColor: colors.grayBorder,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
   sectionTitle: {
     fontFamily: fonts.semibold,
@@ -726,10 +768,12 @@ const styles = StyleSheet.create({
     color: colors.dark,
   },
   recommendedBadge: {
-    backgroundColor: colors.primaryLight,
+    backgroundColor: "#F0FDF4",
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
   },
   recommendedText: {
     fontFamily: fonts.regular,
@@ -743,15 +787,15 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    height: 48,
+    height: 50,
     borderWidth: 1,
     borderColor: colors.grayBorder,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 12,
     fontFamily: fonts.regular,
     fontSize: 16,
     color: colors.dark,
-    backgroundColor: colors.grayLight,
+    backgroundColor: "#FFFFFF",
   },
   inputWarning: {
     borderColor: colors.warning,
@@ -794,15 +838,15 @@ const styles = StyleSheet.create({
     color: colors.grayText,
   },
   rangeInput: {
-    height: 48,
+    height: 50,
     borderWidth: 1,
     borderColor: colors.grayBorder,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 12,
     fontFamily: fonts.regular,
     fontSize: 16,
     color: colors.dark,
-    backgroundColor: colors.grayLight,
+    backgroundColor: "#FFFFFF",
   },
   rangeSeparator: {
     paddingTop: 20,
@@ -820,7 +864,7 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: colors.primary,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingVertical: 16,
     flexDirection: "row",
     alignItems: "center",

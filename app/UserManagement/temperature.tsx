@@ -204,9 +204,10 @@ export default function TemperatureScreen() {
   };
 
   const getStatus = (val: number) => {
-    if (val >= 24 && val <= 30) return 'Optimal';
-    if (val < 24) return 'Cool';
-    return 'Hot';
+    if (val < 27) return 'Normal';
+    if (val <= 32) return 'Caution';
+    if (val <= 41) return 'Danger';
+    return 'Extreme Danger';
   };
 
   if (loading) {

@@ -222,9 +222,11 @@ export default function HumidityScreen() {
   };
 
   const getStatus = (val: number) => {
-    if (val >= 60 && val <= 80) return 'Optimal';
-    if (val < 60) return 'Low';
-    return 'High';
+    if (val < 30) return 'Low';
+    if (val <= 50) return 'Ideal';
+    if (val <= 60) return 'Moderate';
+    if (val <= 70) return 'High';
+    return 'Severe';
   };
 
   if (loading) {
@@ -283,8 +285,8 @@ export default function HumidityScreen() {
                 </Text>
               </View>
               <View>
-                <Text style={styles.metricLabel}>Optimal range</Text>
-                <Text style={styles.metricValue}>60 - 80%</Text>
+                <Text style={styles.metricLabel}>Ideal range</Text>
+                <Text style={styles.metricValue}>30 - 50%</Text>
               </View>
             </View>
           </View>
