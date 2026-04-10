@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet, View, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { fetchUserProfileByCredentials } from '@/lib/fetchUserProfileByCredentials';
+import { isAdminRole } from '@/lib/isAdminRole';
 import { isFirstLaunch, isRememberMeEnabled, getSavedCredentials, getLoggedInEmail, clearSavedCredentials } from '@/lib/storage';
-import { supabase } from '@/lib/supabase';
 import { scale, fontScale } from '@/lib/responsive';
 import * as Crypto from 'expo-crypto';
 
@@ -55,15 +56,21 @@ export default function SplashScreen() {
 
               const trimmedInput = savedCredentials.email.trim();
 
-              const { data: userProfile, error } = await supabase
-                .from('user_profiles')
-                .select('email')
-                .or(`email.eq.${trimmedInput},phone_number.eq.${trimmedInput}`)
-                .eq('password', hashedPassword)
-                .maybeSingle();
+              const { profile: userProfile, error } =
+                await fetchUserProfileByCredentials(trimmedInput, hashedPassword);
 
-              if (!error && userProfile) {
-                // Credentials are valid, go to dashboard
+              if (!error && userProfile && typeof userProfile.email === 'string') {
+                if (isAdminRole(userProfile.role)) {
+                  await clearSavedCredentials();
+                  setTimeout(() => {
+                    router.replace({
+                      pathname: '/UserManagement/login',
+                      params: { blocked: 'admin' },
+                    });
+                  }, 4000);
+                  return;
+                }
+                // Farmer (or non-admin): go to dashboard
                 setTimeout(() => {
                   router.replace({
                     pathname: '/UserManagement/dashboard',

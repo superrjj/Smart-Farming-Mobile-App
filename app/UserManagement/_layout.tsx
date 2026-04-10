@@ -1,12 +1,14 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { supabase } from '@/lib/supabase';
-import { getLoggedInEmail } from '@/lib/storage';
+import { isAdminRole } from '@/lib/isAdminRole';
+import { clearAllStorage, getLoggedInEmail } from '@/lib/storage';
 
 type RecoPopup = { title: string; message: string } | null;
 
 export default function UserManagementLayout() {
+  const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [popup, setPopup] = useState<RecoPopup>(null);
   const appStateRef = useRef(AppState.currentState);
@@ -80,6 +82,39 @@ export default function UserManagementLayout() {
       void supabase.removeChannel(channel);
     };
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`um-role-guard-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'user_profiles',
+          filter: `id=eq.${userId}`,
+        },
+        async (payload) => {
+          const row = payload.new as { role?: unknown };
+          if (!isAdminRole(row.role)) return;
+          try {
+            await clearAllStorage();
+          } catch {
+            // ignore storage failures; still redirect
+          }
+          router.replace({
+            pathname: '/UserManagement/login',
+            params: { blocked: 'admin' },
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [router, userId]);
 
   return (
     <>

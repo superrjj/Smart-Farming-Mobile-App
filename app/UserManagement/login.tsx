@@ -6,11 +6,14 @@ import {
   saveCredentials,
   saveLoggedInEmail,
 } from "@/lib/storage";
+import { AdminAccessDeniedModal } from "@/components/admin-access-denied-modal";
+import { fetchUserProfileByCredentials } from "@/lib/fetchUserProfileByCredentials";
+import { isAdminRole } from "@/lib/isAdminRole";
 import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
 import * as Crypto from "expo-crypto";
 import * as Device from "expo-device";
-import { Link, useRouter } from "expo-router";
+import { Link, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -43,10 +46,15 @@ const fonts = {
 
 export default function LoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ blocked?: string }>();
+  const blockedParam =
+    typeof params.blocked === "string" ? params.blocked : undefined;
+
   const [emailOrPhone, setEmailOrPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [adminDeniedVisible, setAdminDeniedVisible] = useState(false);
 
   // Forgot password states
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -81,6 +89,12 @@ export default function LoginScreen() {
     loadSavedCredentials();
   }, []);
 
+  useEffect(() => {
+    if (blockedParam === "admin") {
+      setAdminDeniedVisible(true);
+    }
+  }, [blockedParam]);
+
   const handleLogin = async () => {
     if (!emailOrPhone || !password) {
       Alert.alert("Error", "Please fill in all fields");
@@ -99,29 +113,29 @@ export default function LoginScreen() {
 
       const trimmedInput = emailOrPhone.trim();
 
-      // Check if input is email or phone number
-      const { data: userProfile, error } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .or(`email.eq.${trimmedInput},phone_number.eq.${trimmedInput}`)
-        .eq("password", hashedPassword)
-        .maybeSingle();
+      const { profile: userProfile, error } =
+        await fetchUserProfileByCredentials(trimmedInput, hashedPassword);
 
       if (error) {
         Alert.alert(
           "Login Failed",
           error.message || "An error occurred during login. Please try again.",
         );
-        setLoading(false);
         return;
       }
 
-      if (!userProfile) {
+      if (!userProfile || typeof userProfile.email !== "string") {
         Alert.alert(
           "Login Failed",
           "Invalid email/phone number or password. Please check your credentials and try again.",
         );
-        setLoading(false);
+        return;
+      }
+
+      const userEmail = userProfile.email;
+
+      if (isAdminRole(userProfile.role)) {
+        setAdminDeniedVisible(true);
         return;
       }
 
@@ -131,7 +145,7 @@ export default function LoginScreen() {
           device_id: deviceId,
           device_model: deviceModel,
         })
-        .eq("email", userProfile.email);
+        .eq("email", userEmail);
 
       if (updateError) {
         console.warn("Failed to update device info:", updateError.message);
@@ -145,7 +159,7 @@ export default function LoginScreen() {
           await clearSavedCredentials();
         }
         // Save logged in email for future reference
-        await saveLoggedInEmail(userProfile.email);
+        await saveLoggedInEmail(userEmail);
       } catch (storageError: any) {
         console.warn("Error saving credentials:", storageError);
         // Don't block login if storage fails, but show warning
@@ -158,7 +172,7 @@ export default function LoginScreen() {
 
       router.replace({
         pathname: "/UserManagement/dashboard",
-        params: { email: userProfile.email },
+        params: { email: userEmail },
       });
     } catch (error: any) {
       console.error("Login error:", error);
@@ -167,6 +181,7 @@ export default function LoginScreen() {
         error.message ||
           "An unexpected error occurred. Please check your internet connection and try again.",
       );
+    } finally {
       setLoading(false);
     }
   };
@@ -639,6 +654,11 @@ export default function LoginScreen() {
           </KeyboardAvoidingView>
         </View>
       )}
+
+      <AdminAccessDeniedModal
+        visible={adminDeniedVisible}
+        onDismiss={() => setAdminDeniedVisible(false)}
+      />
     </SafeAreaView>
   );
 }

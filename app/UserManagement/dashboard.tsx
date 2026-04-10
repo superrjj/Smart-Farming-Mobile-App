@@ -24,6 +24,7 @@ import Svg, {
   LinearGradient as SvgLinearGradient,
 } from "react-native-svg";
 
+import { isAdminRole } from "@/lib/isAdminRole";
 import { clearAllStorage } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 import { getWeatherData } from "../../lib/weatherConfig";
@@ -606,10 +607,18 @@ export default function DashboardScreen() {
       try {
         const { data, error } = await supabase
           .from("user_profiles")
-          .select("id, name, profile_picture")
+          .select("id, name, profile_picture, role")
           .eq("email", email)
           .maybeSingle();
         if (!error && data) {
+          if (isAdminRole(data.role)) {
+            await clearAllStorage();
+            router.replace({
+              pathname: "/UserManagement/login",
+              params: { blocked: "admin" },
+            });
+            return;
+          }
           setFullName(data.name || "Farmer");
           setProfilePicture(data.profile_picture);
           setUserId(data.id);
