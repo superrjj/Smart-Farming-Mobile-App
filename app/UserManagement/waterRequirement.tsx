@@ -93,6 +93,141 @@ interface WaterRequirements {
   irrigationFrequency: string;
 }
 
+type RecommendedRange = { min: number; max: number; optimal: number };
+
+function InputField({
+  label,
+  value,
+  onChange,
+  unit,
+  recommended,
+  description,
+  hint,
+  inputStyle,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  unit: string;
+  recommended?: RecommendedRange;
+  description?: string;
+  hint: string;
+  inputStyle?: any;
+}) {
+  const parsed = Number(value);
+  const isWithinRecommended = recommended
+    ? value.trim().length > 0 &&
+      !Number.isNaN(parsed) &&
+      parsed >= recommended.min &&
+      parsed <= recommended.max
+    : true;
+
+  return (
+    <View style={styles.inputGroup}>
+      <View style={styles.inputHeader}>
+        <Text style={styles.inputLabel}>{label}</Text>
+        {recommended && (
+          <View style={styles.recommendedBadge}>
+            <Text style={styles.recommendedText}>
+              {recommended.min}-{recommended.max} {unit}
+            </Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.inputRow}>
+        <TextInput
+          style={[
+            styles.input,
+            inputStyle,
+            !isWithinRecommended && styles.inputWarning,
+          ]}
+          value={value}
+          onChangeText={onChange}
+          keyboardType="numeric"
+          placeholder={hint}
+          placeholderTextColor={colors.grayText}
+        />
+        <Text style={styles.unitText}>{unit}</Text>
+      </View>
+      {description && <Text style={styles.descriptionText}>{description}</Text>}
+      {recommended && !isWithinRecommended && (
+        <Text style={styles.warningText}>
+          ⚠️ Value outside recommended range
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function RangeInput({
+  label,
+  minValue,
+  maxValue,
+  onMinChange,
+  onMaxChange,
+  unit,
+  recommended,
+  description,
+  minHint,
+  maxHint,
+}: {
+  label: string;
+  minValue: string;
+  maxValue: string;
+  onMinChange: (value: string) => void;
+  onMaxChange: (value: string) => void;
+  unit: string;
+  recommended?: RecommendedRange;
+  description?: string;
+  minHint: string;
+  maxHint: string;
+}) {
+  return (
+    <View style={styles.rangeGroup}>
+      <View style={styles.inputHeader}>
+        <Text style={styles.inputLabel}>{label}</Text>
+        {recommended && (
+          <View style={styles.recommendedBadge}>
+            <Text style={styles.recommendedText}>
+              Optimal: {recommended.optimal} {unit}
+            </Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.rangeRow}>
+        <View style={styles.rangeInputContainer}>
+          <Text style={styles.rangeLabel}>Min</Text>
+          <TextInput
+            style={styles.rangeInput}
+            value={minValue}
+            onChangeText={onMinChange}
+            keyboardType="numeric"
+            placeholder={minHint}
+            placeholderTextColor={colors.grayText}
+          />
+          <Text style={styles.rangeUnit}>{unit}</Text>
+        </View>
+        <View style={styles.rangeSeparator}>
+          <Text style={styles.rangeSeparatorText}>to</Text>
+        </View>
+        <View style={styles.rangeInputContainer}>
+          <Text style={styles.rangeLabel}>Max</Text>
+          <TextInput
+            style={styles.rangeInput}
+            value={maxValue}
+            onChangeText={onMaxChange}
+            keyboardType="numeric"
+            placeholder={maxHint}
+            placeholderTextColor={colors.grayText}
+          />
+          <Text style={styles.rangeUnit}>{unit}</Text>
+        </View>
+      </View>
+      {description && <Text style={styles.descriptionText}>{description}</Text>}
+    </View>
+  );
+}
+
 export default function WaterRequirementScreen() {
   const params = useLocalSearchParams<{ email?: string }>();
   const email = typeof params.email === "string" ? params.email : "";
@@ -216,9 +351,15 @@ export default function WaterRequirementScreen() {
       "Temperature maximum",
     );
     if (temperatureMax === null) return;
-    const humidityMin = parseValue(requirements.humidityMin, "Humidity minimum");
+    const humidityMin = parseValue(
+      requirements.humidityMin,
+      "Humidity minimum",
+    );
     if (humidityMin === null) return;
-    const humidityMax = parseValue(requirements.humidityMax, "Humidity maximum");
+    const humidityMax = parseValue(
+      requirements.humidityMax,
+      "Humidity maximum",
+    );
     if (humidityMax === null) return;
     const irrigationDuration = parseValue(
       requirements.irrigationDuration,
@@ -350,136 +491,8 @@ export default function WaterRequirementScreen() {
     );
   };
 
-  const InputField = ({
-    label,
-    value,
-    onChange,
-    unit,
-    recommended,
-    description,
-    hint,
-  }: {
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-    unit: string;
-    recommended?: { min: number; max: number; optimal: number };
-    description?: string;
-    hint: string;
-  }) => {
-    const parsed = Number(value);
-    const isWithinRecommended = recommended
-      ? value.trim().length > 0 &&
-        !Number.isNaN(parsed) &&
-        parsed >= recommended.min &&
-        parsed <= recommended.max
-      : true;
-
-    return (
-      <View style={styles.inputGroup}>
-        <View style={styles.inputHeader}>
-          <Text style={styles.inputLabel}>{label}</Text>
-          {recommended && (
-            <View style={styles.recommendedBadge}>
-              <Text style={styles.recommendedText}>
-                Recommended: {recommended.min}-{recommended.max} {unit}
-              </Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.inputRow}>
-          <TextInput
-            style={[styles.input, !isWithinRecommended && styles.inputWarning]}
-            value={value}
-            onChangeText={onChange}
-            keyboardType="numeric"
-            placeholder={hint}
-            placeholderTextColor={colors.grayText}
-          />
-          <Text style={styles.unitText}>{unit}</Text>
-        </View>
-        {description && (
-          <Text style={styles.descriptionText}>{description}</Text>
-        )}
-        {recommended && !isWithinRecommended && (
-          <Text style={styles.warningText}>
-            ⚠️ Value outside recommended range
-          </Text>
-        )}
-      </View>
-    );
-  };
-
-  const RangeInput = ({
-    label,
-    minValue,
-    maxValue,
-    onMinChange,
-    onMaxChange,
-    unit,
-    recommended,
-    description,
-    minHint,
-    maxHint,
-  }: {
-    label: string;
-    minValue: string;
-    maxValue: string;
-    onMinChange: (value: string) => void;
-    onMaxChange: (value: string) => void;
-    unit: string;
-    recommended?: { min: number; max: number; optimal: number };
-    description?: string;
-    minHint: string;
-    maxHint: string;
-  }) => {
-    return (
-      <View style={styles.rangeGroup}>
-        <View style={styles.inputHeader}>
-          <Text style={styles.inputLabel}>{label}</Text>
-          {recommended && (
-            <View style={styles.recommendedBadge}>
-              <Text style={styles.recommendedText}>
-                Optimal: {recommended.optimal} {unit}
-              </Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.rangeRow}>
-          <View style={styles.rangeInputContainer}>
-            <Text style={styles.rangeLabel}>Min</Text>
-            <TextInput
-              style={styles.rangeInput}
-              value={minValue}
-              onChangeText={onMinChange}
-              keyboardType="numeric"
-              placeholder={minHint}
-              placeholderTextColor={colors.grayText}
-            />
-            <Text style={styles.rangeUnit}>{unit}</Text>
-          </View>
-          <View style={styles.rangeSeparator}>
-            <Text style={styles.rangeSeparatorText}>to</Text>
-          </View>
-          <View style={styles.rangeInputContainer}>
-            <Text style={styles.rangeLabel}>Max</Text>
-            <TextInput
-              style={styles.rangeInput}
-              value={maxValue}
-              onChangeText={onMaxChange}
-              keyboardType="numeric"
-              placeholder={maxHint}
-              placeholderTextColor={colors.grayText}
-            />
-            <Text style={styles.rangeUnit}>{unit}</Text>
-          </View>
-        </View>
-        {description && (
-          <Text style={styles.descriptionText}>{description}</Text>
-        )}
-      </View>
-    );
-  };
+  // InputField and RangeInput are declared at module scope to avoid TextInput
+  // focus loss (keyboard dismiss) on each keystroke.
 
   if (loading) {
     return (
@@ -534,7 +547,8 @@ export default function WaterRequirementScreen() {
             </View>
             <Text style={styles.infoText}>
               Set custom thresholds for your crop. Fields are editable and use
-              hint values as a guide. Recommended ranges are shown for reference.
+              hint values as a guide. Recommended ranges are shown for
+              reference.
             </Text>
           </View>
 
@@ -614,6 +628,7 @@ export default function WaterRequirementScreen() {
               }
               unit="minutes"
               hint="e.g. 20"
+              inputStyle={styles.irrigationInput}
               recommended={STRING_BEANS_RECOMMENDATIONS.irrigationDuration}
               description={
                 STRING_BEANS_RECOMMENDATIONS.irrigationDuration.description
@@ -627,6 +642,7 @@ export default function WaterRequirementScreen() {
               }
               unit="times/day"
               hint="e.g. 2"
+              inputStyle={styles.irrigationInput}
               recommended={STRING_BEANS_RECOMMENDATIONS.irrigationFrequency}
               description={
                 STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.description
@@ -782,8 +798,9 @@ const styles = StyleSheet.create({
   },
   inputRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     gap: 8,
+    flexWrap: "wrap",
   },
   input: {
     flex: 1,
@@ -798,14 +815,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   inputWarning: {
-    borderColor: colors.warning,
-    backgroundColor: "#FEF3C7",
+    borderColor: colors.grayBorder,
+    backgroundColor: colors.white,
   },
   unitText: {
     fontFamily: fonts.medium,
     fontSize: 14,
     color: colors.grayText,
-    minWidth: 60,
+    flexShrink: 1,
+    maxWidth: 90,
+    textAlign: "right",
+    paddingBottom: 12,
+  },
+  irrigationInput: {
+    backgroundColor: "#ECFDF5",
+    borderColor: "#BBF7D0",
   },
   descriptionText: {
     fontFamily: fonts.regular,
@@ -865,13 +889,13 @@ const styles = StyleSheet.create({
   saveButton: {
     backgroundColor: colors.primary,
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
     marginTop: 8,
-    marginBottom: 24,
+    marginBottom: 5,
   },
   saveButtonDisabled: {
     opacity: 0.6,
@@ -881,7 +905,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontFamily: fonts.semibold,
-    fontSize: 16,
+    fontSize: 13,
     color: colors.white,
   },
 });
