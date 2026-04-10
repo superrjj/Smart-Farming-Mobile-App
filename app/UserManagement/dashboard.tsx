@@ -1,4 +1,5 @@
 import { FontAwesome } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -24,6 +25,8 @@ import Svg, {
   LinearGradient as SvgLinearGradient,
 } from "react-native-svg";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 import { isAdminRole } from "@/lib/isAdminRole";
 import { clearAllStorage } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
@@ -31,6 +34,9 @@ import { getWeatherData } from "../../lib/weatherConfig";
 
 // ── Config ─────────────────────────────────────────────────────────────────
 const DEFAULT_COORDS = { latitude: 15.53, longitude: 120.6042 };
+
+/** Local UI preference only; does not command hardware or sync to the server. */
+const AUTO_IRRIGATION_MODE_KEY = "dashboard_auto_irrigation_mode";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function formatPHTime(isoString: string): string {
@@ -488,7 +494,50 @@ export default function DashboardScreen() {
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [nextScheduleTime, setNextScheduleTime] = useState<string>("");
   const [scheduleLoading, setScheduleLoading] = useState(true);
+  const [autoIrrigationModeOn, setAutoIrrigationModeOn] = useState(false);
+  const [autoIrrigationConfirmOpen, setAutoIrrigationConfirmOpen] =
+    useState(false);
+  const [autoIrrigationPendingOn, setAutoIrrigationPendingOn] = useState(true);
   const drawerX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        let stored = await AsyncStorage.getItem(AUTO_IRRIGATION_MODE_KEY);
+        if (stored == null) {
+          stored = await AsyncStorage.getItem(
+            "dashboard_prototype_auto_irrigation",
+          );
+        }
+        if (!cancelled && stored === "1") setAutoIrrigationModeOn(true);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const openAutoIrrigationConfirm = useCallback(() => {
+    setAutoIrrigationPendingOn(!autoIrrigationModeOn);
+    setAutoIrrigationConfirmOpen(true);
+    void Haptics.selectionAsync();
+  }, [autoIrrigationModeOn]);
+
+  const cancelAutoIrrigationConfirm = useCallback(() => {
+    setAutoIrrigationConfirmOpen(false);
+  }, []);
+
+  const applyAutoIrrigationMode = useCallback((on: boolean) => {
+    setAutoIrrigationModeOn(on);
+    void AsyncStorage.setItem(AUTO_IRRIGATION_MODE_KEY, on ? "1" : "0").catch(
+      () => {},
+    );
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setAutoIrrigationConfirmOpen(false);
+  }, []);
 
   const timeToMinutes = (timeStr: string): number => {
     try {
@@ -937,10 +986,31 @@ export default function DashboardScreen() {
               )}
             </View>
             <View style={styles.heroRight}>
-              <View style={styles.heroAutoBadge}>
-                <FontAwesome name="refresh" size={10} color="#fff" />
-                <Text style={styles.heroAutoBadgeText}>AUTO</Text>
-              </View>
+              <Pressable
+                onPress={openAutoIrrigationConfirm}
+                style={({ pressed }) => [
+                  styles.heroAutoBadge,
+                  autoIrrigationModeOn
+                    ? styles.heroAutoBadgeOn
+                    : styles.heroAutoBadgeOff,
+                  pressed && styles.heroAutoBadgePressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  autoIrrigationModeOn
+                    ? "Automatic irrigation is on, tap to change"
+                    : "Automatic irrigation is off, tap to change"
+                }
+              >
+                <FontAwesome
+                  name={autoIrrigationModeOn ? "check" : "power-off"}
+                  size={10}
+                  color="#fff"
+                />
+                <Text style={styles.heroAutoBadgeText}>
+                  {autoIrrigationModeOn ? "On" : "Off"}
+                </Text>
+              </Pressable>
             </View>
           </View>
 
@@ -1213,6 +1283,72 @@ export default function DashboardScreen() {
           </View>
         </Modal>
 
+        {/* ── Automatic irrigation confirm ── */}
+        <Modal
+          visible={autoIrrigationConfirmOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={cancelAutoIrrigationConfirm}
+        >
+          <View style={styles.popupBackdrop}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={cancelAutoIrrigationConfirm}
+            />
+            <View style={styles.autoIrrigationModalCard}>
+              <View
+                style={[
+                  styles.autoIrrigationModalIconWrap,
+                  autoIrrigationPendingOn
+                    ? styles.autoIrrigationModalIconOn
+                    : styles.autoIrrigationModalIconOff,
+                ]}
+              >
+                <FontAwesome
+                  name={autoIrrigationPendingOn ? "toggle-on" : "toggle-off"}
+                  size={22}
+                  color={autoIrrigationPendingOn ? colors.brandGreen : "#64748B"}
+                />
+              </View>
+              <Text style={styles.popupTitle}>
+                {autoIrrigationPendingOn
+                  ? "Turn on automatic irrigation?"
+                  : "Turn off automatic irrigation?"}
+              </Text>
+              <Text style={styles.popupMessage}>
+                {autoIrrigationPendingOn
+                  ? "When automatic irrigation is on, the system can follow your schedules and sensor-based rules whenever your field equipment is linked. You remain in control and can switch this off at any time."
+                  : "Turning this off stops automatic irrigation from running through this app until you turn it on again. Scheduled times and sensor readings on the dashboard are not removed."}
+              </Text>
+              <View style={styles.autoIrrigationModalActions}>
+                <TouchableOpacity
+                  style={styles.autoIrrigationModalCancel}
+                  onPress={cancelAutoIrrigationConfirm}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.autoIrrigationModalCancelText}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.autoIrrigationModalConfirm,
+                    autoIrrigationPendingOn
+                      ? styles.autoIrrigationModalConfirmOn
+                      : styles.autoIrrigationModalConfirmOff,
+                  ]}
+                  onPress={() => applyAutoIrrigationMode(autoIrrigationPendingOn)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.autoIrrigationModalConfirmText}>
+                    {autoIrrigationPendingOn ? "Turn on" : "Turn off"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         {menuOpen && (
           <Pressable
             style={styles.backdrop}
@@ -1444,10 +1580,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: colors.brandGreen,
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 4,
+  },
+  heroAutoBadgeOn: {
+    backgroundColor: colors.brandGreen,
+  },
+  heroAutoBadgeOff: {
+    backgroundColor: "#94A3B8",
+  },
+  heroAutoBadgePressed: {
+    opacity: 0.88,
   },
   heroAutoBadgeText: {
     fontFamily: fonts.semibold,
@@ -1923,5 +2067,67 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     color: "#fff",
     fontSize: 13,
+  },
+
+  autoIrrigationModalCard: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    zIndex: 1,
+  },
+  autoIrrigationModalIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+    alignSelf: "center",
+  },
+  autoIrrigationModalIconOn: {
+    backgroundColor: "#ECFDF5",
+  },
+  autoIrrigationModalIconOff: {
+    backgroundColor: "#F1F5F9",
+  },
+  autoIrrigationModalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 20,
+  },
+  autoIrrigationModalCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F9FAFB",
+  },
+  autoIrrigationModalCancelText: {
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: "#374151",
+  },
+  autoIrrigationModalConfirm: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  autoIrrigationModalConfirmOn: {
+    backgroundColor: colors.brandGreen,
+  },
+  autoIrrigationModalConfirmOff: {
+    backgroundColor: "#64748B",
+  },
+  autoIrrigationModalConfirmText: {
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: "#fff",
   },
 });
