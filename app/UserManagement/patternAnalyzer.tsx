@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebView } from "react-native-webview";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -433,6 +434,196 @@ const ScoreBarChart = ({
         })}
       </View>
     </ScrollView>
+  );
+};
+
+const ScoreBarChartJS = ({
+  data,
+}: {
+  data: MonthlyRecord[];
+}) => {
+  if (!data.length) return null;
+  const labels = data.map((d) => d.shortLabel);
+  const values = data.map((d) => d.growScore);
+  const colorsByScore = data.map((d) => getScoreStyle(d.growScore).color);
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: transparent; }
+      </style>
+    </head>
+    <body>
+      <div style="position:relative; width:100%; height:190px;">
+        <canvas id="scoreBar"></canvas>
+      </div>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+      <script>
+        new Chart(document.getElementById('scoreBar'), {
+          type: 'bar',
+          data: {
+            labels: ${JSON.stringify(labels)},
+            datasets: [{
+              data: ${JSON.stringify(values)},
+              backgroundColor: ${JSON.stringify(colorsByScore)},
+              borderRadius: 6,
+              borderSkipped: false
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => ctx.raw + '%'
+                }
+              }
+            },
+            scales: {
+              y: {
+                min: 0,
+                max: 100,
+                ticks: {
+                  stepSize: 20,
+                  color: '#64748B',
+                  font: { size: 11 },
+                  callback: (v) => v + '%'
+                },
+                grid: { color: 'rgba(100,116,139,0.2)' },
+                border: { display: false }
+              },
+              x: {
+                ticks: {
+                  color: '#64748B',
+                  font: { size: 10 },
+                  maxRotation: 0
+                },
+                grid: { display: false },
+                border: { display: false }
+              }
+            }
+          }
+        });
+      </script>
+    </body>
+    </html>
+  `;
+
+  return (
+    <View style={styles.chartShell}>
+      <WebView
+        source={{ html }}
+        style={{ height: 190, backgroundColor: "transparent" }}
+        scrollEnabled={false}
+        javaScriptEnabled
+        originWhitelist={["*"]}
+      />
+    </View>
+  );
+};
+
+const PercentLineChartJS = ({
+  labels,
+  values,
+  color,
+}: {
+  labels: string[];
+  values: number[];
+  color: string;
+}) => {
+  if (!values.length) return null;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: transparent; }
+      </style>
+    </head>
+    <body>
+      <div style="position:relative; width:100%; height:165px;">
+        <canvas id="percentLine"></canvas>
+      </div>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+      <script>
+        new Chart(document.getElementById('percentLine'), {
+          type: 'line',
+          data: {
+            labels: ${JSON.stringify(labels)},
+            datasets: [{
+              data: ${JSON.stringify(values)},
+              borderColor: '${color}',
+              borderWidth: 2.5,
+              pointRadius: 2.5,
+              pointHoverRadius: 3,
+              tension: 0.35,
+              fill: false
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => ctx.raw + '%'
+                }
+              }
+            },
+            scales: {
+              y: {
+                min: 0,
+                max: 100,
+                ticks: {
+                  stepSize: 20,
+                  color: '#64748B',
+                  font: { size: 11 },
+                  callback: (v) => v + '%'
+                },
+                grid: {
+                  color: 'rgba(100,116,139,0.2)',
+                  lineWidth: 1
+                },
+                border: { display: false }
+              },
+              x: {
+                ticks: {
+                  maxTicksLimit: 6,
+                  color: '#64748B',
+                  font: { size: 10 },
+                  maxRotation: 0
+                },
+                grid: { color: 'rgba(100,116,139,0.1)', lineWidth: 1 },
+                border: { display: false }
+              }
+            }
+          }
+        });
+      </script>
+    </body>
+    </html>
+  `;
+
+  return (
+    <View style={styles.chartShell}>
+      <WebView
+        source={{ html }}
+        style={{ height: 165, backgroundColor: "transparent" }}
+        scrollEnabled={false}
+        javaScriptEnabled
+        originWhitelist={["*"]}
+      />
+    </View>
   );
 };
 
@@ -953,19 +1144,18 @@ export default function PatternAnalyzerScreen() {
             </View>
           </View>
 
-          {/* Score bar chart */}
+          {/* Monthly Growing Score */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>
               Monthly Growing Score — {selectedYear}
             </Text>
             <Text style={styles.cardSub}>
-              Tap a bar to inspect that month&apos;s conditions
+              Bar chart indicates monthly suitability score (%)
             </Text>
-            <ScoreBarChart
-              data={yearData}
-              selectedMonth={selectedMonth}
-              onSelectMonth={setSelectedMonth}
-            />
+            <ScoreBarChartJS data={yearData} />
+            <Text style={[styles.cardSub, { marginTop: 6, marginBottom: 0 }]}>
+              Tap a month chip above to inspect details.
+            </Text>
             <View
               style={{
                 flexDirection: "row",
@@ -1270,18 +1460,10 @@ export default function PatternAnalyzerScreen() {
             </ScrollView>
 
             {activeChart === "score" && (
-              <MiniLineChart
-                data={chartData.map((d) => ({
-                  label: d.label,
-                  value: d.score,
-                }))}
-                lineColor={colors.emerald}
-                height={100}
-                refLines={[
-                  { value: 80, color: colors.emerald },
-                  { value: 65, color: colors.primary },
-                  { value: 50, color: colors.red },
-                ]}
+              <PercentLineChartJS
+                labels={chartData.map((d) => d.label)}
+                values={chartData.map((d) => d.score)}
+                color={colors.emerald}
               />
             )}
             {activeChart === "climate" && (

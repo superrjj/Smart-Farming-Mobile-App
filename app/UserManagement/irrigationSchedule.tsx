@@ -8,7 +8,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -236,6 +236,7 @@ export default function IrrigationScheduleScreen() {
   const email = typeof params.email === "string" ? params.email : "";
   const router = useRouter();
   const today = new Date();
+  const [nowTick, setNowTick] = useState(() => new Date());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [scheduledDates, setScheduledDates] = useState<ScheduleDate[]>([]);
@@ -250,9 +251,7 @@ export default function IrrigationScheduleScreen() {
     useState<DateSchedule | null>(null);
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [newScheduleDates, setNewScheduleDates] = useState<number[]>([]);
-  const [newScheduleTimes, setNewScheduleTimes] = useState<string[]>([
-    "08:00 AM",
-  ]);
+  const [newScheduleTimes, setNewScheduleTimes] = useState<string[]>([]);
   const [newScheduleTime, setNewScheduleTime] = useState("08:00");
   const [newSchedulePeriod, setNewSchedulePeriod] = useState<"AM" | "PM">("AM");
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -276,6 +275,9 @@ export default function IrrigationScheduleScreen() {
     time: string;
     scheduleId: string;
   } | null>(null);
+  const realtimeRefreshTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
 
   const [soilMoisture, setSoilMoisture] = useState(0);
   const [temperature, setTemperature] = useState(0);
@@ -298,13 +300,19 @@ export default function IrrigationScheduleScreen() {
 
       results.forEach(({ data, error }) => {
         if (error || !data) return;
-        if (data.sensor_id === 1) setTemperature(data.value);
-        else if (data.sensor_id === 2) setHumidity(data.value);
-        else if (data.sensor_id === 3) {
+        if (data.sensor_id === 1) {
           const raw = Number(data.value);
-          const percent = raw <= 1 ? raw * 100 : raw;
-          const rounded = Math.round(percent);
-          const clamped = Math.min(100, Math.max(0, rounded));
+          // Match dashboard: round to 1 decimal place
+          setTemperature(Math.round(raw * 10) / 10);
+        } else if (data.sensor_id === 2) {
+          const raw = Number(data.value);
+          // Match dashboard: humidity as integer %
+          setHumidity(Math.round(raw));
+        } else if (data.sensor_id === 3) {
+          const raw = Number(data.value);
+          // Match dashboard admin conversion: higher raw = drier (inverted ADC scale)
+          const percent = Math.round(((1023 - raw) / 1023) * 100);
+          const clamped = Math.min(100, Math.max(0, percent));
           setSoilMoisture(clamped);
         }
       });
@@ -316,6 +324,13 @@ export default function IrrigationScheduleScreen() {
   useEffect(() => {
     fetchLatestSensorData();
     const interval = setInterval(fetchLatestSensorData, 30000); // refresh every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowTick(new Date());
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -385,17 +400,65 @@ export default function IrrigationScheduleScreen() {
   }, [currentMonth, currentYear, currentScheduleId]);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      updateTodayStats();
-    }, 50);
-    const interval = setInterval(() => {
-      updateTodayStats();
-    }, 60000);
-    return () => {
-      clearTimeout(timeoutId);
-      clearInterval(interval);
+    updateTodayStats();
+  }, [dateSchedules, nowTick]);
+
+  useEffect(() => {
+    if (!currentScheduleId || !userId) return;
+
+    const refreshScheduleState = () => {
+      if (realtimeRefreshTimeoutRef.current) {
+        clearTimeout(realtimeRefreshTimeoutRef.current);
+      }
+      // Batch bursts of realtime events into one refresh.
+      realtimeRefreshTimeoutRef.current = setTimeout(() => {
+        void fetchTimeSchedules(currentScheduleId);
+        void fetchScheduledDates(currentScheduleId);
+      }, 150);
     };
-  }, [dateSchedules]);
+
+    const channel = supabase
+      .channel(`irrigation-schedule-live-${currentScheduleId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "irrigation_scheduled_dates",
+          filter: `schedule_id=eq.${currentScheduleId}`,
+        },
+        refreshScheduleState,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "irrigation_time_schedules",
+          filter: `schedule_id=eq.${currentScheduleId}`,
+        },
+        refreshScheduleState,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "irrigation_schedules",
+          filter: `id=eq.${currentScheduleId}`,
+        },
+        refreshScheduleState,
+      )
+      .subscribe();
+
+    return () => {
+      if (realtimeRefreshTimeoutRef.current) {
+        clearTimeout(realtimeRefreshTimeoutRef.current);
+        realtimeRefreshTimeoutRef.current = null;
+      }
+      void supabase.removeChannel(channel);
+    };
+  }, [currentScheduleId, userId, currentMonth, currentYear]);
 
   const fetchUserSession = async () => {
     if (!email) {
@@ -675,8 +738,20 @@ export default function IrrigationScheduleScreen() {
     return selectedDate < todayDate;
   };
 
-  const isDateScheduled = (day: number) =>
-    dateSchedules.has(`${currentYear}-${currentMonth + 1}-${day}`);
+  const isDateScheduled = (day: number) => {
+    const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
+    const schedule = dateSchedules.get(dateKey);
+    if (!schedule) return false;
+    return schedule.schedules.some(
+      (entry) =>
+        !isScheduleTimePast(
+          schedule.year,
+          schedule.month,
+          schedule.day,
+          entry.time,
+        ),
+    );
+  };
 
   const handleDateClick = (day: number) => {
     const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
@@ -695,7 +770,7 @@ export default function IrrigationScheduleScreen() {
 
   const handleAddSchedule = () => {
     setNewScheduleDates([]);
-    setNewScheduleTimes(["08:00 AM"]);
+    setNewScheduleTimes([]);
     setNewScheduleTime("08:00");
     setNewSchedulePeriod("AM");
     setSelectedHour("08");
@@ -967,6 +1042,21 @@ export default function IrrigationScheduleScreen() {
 
   const handleEditTime = (index: number) => {
     const timeString = newScheduleTimes[index];
+    // If today is selected as a target date, do not allow editing a time that already passed.
+    const todayIsSelected =
+      currentMonth === nowTick.getMonth() &&
+      currentYear === nowTick.getFullYear() &&
+      newScheduleDates.includes(nowTick.getDate());
+    if (todayIsSelected) {
+      const currentMinutes = nowTick.getHours() * 60 + nowTick.getMinutes();
+      if (timeToMinutes(timeString) <= currentMinutes) {
+        Alert.alert(
+          "Past time",
+          "That time has already passed for today. Please add a new future time instead.",
+        );
+        return;
+      }
+    }
     const [timePart, period] = timeString.split(" ");
     const [hour, minute] = timePart.split(":");
     setEditingTimeIndex(index);
@@ -978,9 +1068,7 @@ export default function IrrigationScheduleScreen() {
   };
 
   const handleRemoveTime = (index: number) => {
-    if (newScheduleTimes.length > 1)
-      setNewScheduleTimes(newScheduleTimes.filter((_, i) => i !== index));
-    else Alert.alert("Error", "At least one time is required");
+    setNewScheduleTimes(newScheduleTimes.filter((_, i) => i !== index));
   };
 
   const toggleDateSelection = (day: number) => {
@@ -1015,13 +1103,13 @@ export default function IrrigationScheduleScreen() {
     timeToMinutes(a) === timeToMinutes(b);
 
   const getTodayScheduledTimes = (): { time: string; minutes: number }[] => {
-    const todayDate = new Date();
-    const dateKey = `${todayDate.getFullYear()}-${todayDate.getMonth() + 1}-${todayDate.getDate()}`;
+    const dateKey = `${nowTick.getFullYear()}-${nowTick.getMonth() + 1}-${nowTick.getDate()}`;
     const todaySchedule = dateSchedules.get(dateKey);
     if (!todaySchedule) return [];
+    const currentMinutes = nowTick.getHours() * 60 + nowTick.getMinutes();
     return todaySchedule.schedules
       .map((s) => ({ time: s.time, minutes: timeToMinutes(s.time) }))
-      .filter((s) => s.minutes > 0)
+      .filter((s) => s.minutes > currentMinutes)
       .sort((a, b) => a.minutes - b.minutes);
   };
 
@@ -1032,8 +1120,7 @@ export default function IrrigationScheduleScreen() {
       setNextScheduleTime("No schedule");
       return;
     }
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const currentMinutes = nowTick.getHours() * 60 + nowTick.getMinutes();
     const next = todayTimes.find((t) => t.minutes > currentMinutes);
     setNextScheduleTime(next ? next.time : "No more today");
   };
@@ -1093,7 +1180,7 @@ export default function IrrigationScheduleScreen() {
     timeStr: string,
   ): boolean => {
     if (!timeStr || timeStr === "Not set") return false;
-    const now = new Date();
+    const now = nowTick;
     const dayStart = new Date(year, month - 1, day);
     dayStart.setHours(0, 0, 0, 0);
     const todayStart = new Date(now);
@@ -1266,32 +1353,32 @@ export default function IrrigationScheduleScreen() {
             value={soilMoisture}
             max={100}
             unit="%"
-            trackColor="#DBEAFE"
-            fillColor={colors.purple}
+            trackColor={colors.grayBorder}
+            fillColor="#10B981"
             icon="tint"
-            iconColor={colors.purple}
-            iconBg={colors.purpleLight}
+            iconColor="#22C55E"
+            iconBg={colors.primaryLight}
           />
           <SensorCard
             label="Temperature"
             value={temperature}
             max={50}
             unit="°C"
-            trackColor="#EDE9FE"
-            fillColor={colors.purple}
+            trackColor={colors.grayBorder}
+            fillColor="#EF4444"
             icon="thermometer-half"
-            iconColor={colors.purple}
-            iconBg={colors.purpleLight}
+            iconColor="#F97316"
+            iconBg={colors.warningLight}
           />
           <SensorCard
             label="Humidity"
             value={humidity}
             max={100}
             unit="%"
-            trackColor="#EDE9FE"
-            fillColor={colors.purple}
+            trackColor={colors.grayBorder}
+            fillColor="#7C3AED"
             icon="leaf"
-            iconColor={colors.purple}
+            iconColor="#A855F7"
             iconBg={colors.purpleLight}
           />
         </ScrollView>
@@ -1369,33 +1456,44 @@ export default function IrrigationScheduleScreen() {
                 </View>
                 {newScheduleTimes.length > 0 && (
                   <View style={styles.timesList}>
-                    {newScheduleTimes.map((time, index) => (
-                      <View key={index} style={styles.timeItem}>
-                        <Text style={styles.timeItemText}>{time}</Text>
-                        <View style={styles.timeItemActions}>
-                          <TouchableOpacity
-                            style={styles.timeItemButton}
-                            onPress={() => handleEditTime(index)}
-                          >
-                            <FontAwesome
-                              name="pencil"
-                              size={12}
-                              color={colors.brandBlue}
-                            />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.timeItemButton}
-                            onPress={() => handleRemoveTime(index)}
-                          >
-                            <FontAwesome
-                              name="times"
-                              size={12}
-                              color="#EF4444"
-                            />
-                          </TouchableOpacity>
+                    {newScheduleTimes
+                      .filter((time) => {
+                        const todayIsSelected =
+                          currentMonth === nowTick.getMonth() &&
+                          currentYear === nowTick.getFullYear() &&
+                          newScheduleDates.includes(nowTick.getDate());
+                        if (!todayIsSelected) return true;
+                        const currentMinutes =
+                          nowTick.getHours() * 60 + nowTick.getMinutes();
+                        return timeToMinutes(time) > currentMinutes;
+                      })
+                      .map((time, index) => (
+                        <View key={index} style={styles.timeItem}>
+                          <Text style={styles.timeItemText}>{time}</Text>
+                          <View style={styles.timeItemActions}>
+                            <TouchableOpacity
+                              style={styles.timeItemButton}
+                              onPress={() => handleEditTime(index)}
+                            >
+                              <FontAwesome
+                                name="pencil"
+                                size={12}
+                                color={colors.brandBlue}
+                              />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.timeItemButton}
+                              onPress={() => handleRemoveTime(index)}
+                            >
+                              <FontAwesome
+                                name="times"
+                                size={12}
+                                color="#EF4444"
+                              />
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                      </View>
-                    ))}
+                      ))}
                   </View>
                 )}
                 {showTimePicker && (
@@ -1577,14 +1675,46 @@ export default function IrrigationScheduleScreen() {
               {selectedScheduleInfo &&
                 (() => {
                   const rows = selectedScheduleInfo.schedules;
-                  if (rows.length === 0)
+
+                  const now = new Date();
+                  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+                  const selectedStart = new Date(
+                    selectedScheduleInfo.year,
+                    selectedScheduleInfo.month - 1,
+                    selectedScheduleInfo.day,
+                  );
+                  selectedStart.setHours(0, 0, 0, 0);
+
+                  const todayStart = new Date();
+                  todayStart.setHours(0, 0, 0, 0);
+
+                  const isTodaySelected =
+                    selectedScheduleInfo.year === now.getFullYear() &&
+                    selectedScheduleInfo.month === now.getMonth() + 1 &&
+                    selectedScheduleInfo.day === now.getDate();
+
+                  // Hide schedules when:
+                  // - the selected date is in the past, OR
+                  // - the selected date is today and the time has already passed.
+                  const filteredRows =
+                    selectedStart.getTime() < todayStart.getTime()
+                      ? []
+                      : isTodaySelected
+                        ? rows.filter(
+                            (r) => timeToMinutes(r.time) > currentMinutes,
+                          )
+                        : rows;
+
+                  if (filteredRows.length === 0)
                     return (
                       <View style={styles.scheduleInfoBody}>
                         <Text style={styles.noSchedulesText}>
-                          No schedules for this date.
+                          No upcoming schedules for this date.
                         </Text>
                       </View>
                     );
+
                   return (
                     <View style={styles.scheduleInfoBody}>
                       <View style={styles.infoRow}>
@@ -1611,49 +1741,29 @@ export default function IrrigationScheduleScreen() {
                         <View style={styles.infoContent}>
                           <Text style={styles.infoLabel}>Time(s)</Text>
                           <Text style={styles.infoHintPast}>
-                            Past times appear gray; you can remove any time with
-                            ×.
+                            Past dates/times are hidden.
                           </Text>
                           <View style={styles.timesList}>
-                            {rows.map((schedule) => {
-                              const past = isScheduleTimePast(
-                                selectedScheduleInfo.year,
-                                selectedScheduleInfo.month,
-                                selectedScheduleInfo.day,
-                                schedule.time,
-                              );
-                              return (
-                                <View
-                                  key={schedule.id}
-                                  style={[
-                                    styles.timeItem,
-                                    past && styles.timeItemPast,
-                                  ]}
+                            {filteredRows.map((schedule) => (
+                              <View key={schedule.id} style={styles.timeItem}>
+                                <Text style={styles.timeItemText}>
+                                  {schedule.time}
+                                </Text>
+                                <TouchableOpacity
+                                  style={styles.timeItemDeleteButton}
+                                  onPress={() =>
+                                    deleteScheduleDate(schedule.id)
+                                  }
+                                  accessibilityLabel="Delete schedule"
                                 >
-                                  <Text
-                                    style={[
-                                      styles.timeItemText,
-                                      past && styles.timeItemTextPast,
-                                    ]}
-                                  >
-                                    {schedule.time}
-                                  </Text>
-                                  <TouchableOpacity
-                                    style={styles.timeItemDeleteButton}
-                                    onPress={() =>
-                                      deleteScheduleDate(schedule.id)
-                                    }
-                                    accessibilityLabel="Delete schedule"
-                                  >
-                                    <FontAwesome
-                                      name="times"
-                                      size={12}
-                                      color="#EF4444"
-                                    />
-                                  </TouchableOpacity>
-                                </View>
-                              );
-                            })}
+                                  <FontAwesome
+                                    name="times"
+                                    size={12}
+                                    color="#EF4444"
+                                  />
+                                </TouchableOpacity>
+                              </View>
+                            ))}
                           </View>
                         </View>
                       </View>
@@ -1827,7 +1937,10 @@ const styles = StyleSheet.create({
   },
   dayText: { fontFamily: fonts.regular, fontSize: 14, color: colors.dark },
   emptyDay: { color: "transparent" },
-  selectedDay: { backgroundColor: colors.primary, borderRadius: 8 },
+  selectedDay: {
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+  },
   selectedDayText: { color: colors.white, fontFamily: fonts.bold },
   todayText: { color: colors.accent, fontFamily: fonts.bold },
   pastDay: { backgroundColor: "#F7F7F7" },
