@@ -679,7 +679,6 @@ export default function IrrigationScheduleScreen() {
     dateSchedules.has(`${currentYear}-${currentMonth + 1}-${day}`);
 
   const handleDateClick = (day: number) => {
-    if (isPastDate(day)) return;
     const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
     const scheduled = dateSchedules.get(dateKey);
     if (scheduled) {
@@ -753,16 +752,23 @@ export default function IrrigationScheduleScreen() {
       const insertData: Record<string, unknown>[] = [];
       const skipped: string[] = [];
 
+      const uniqueByClock = new Map<number, string>();
+      for (const t of newScheduleTimes) {
+        const m = timeToMinutes(t);
+        if (!uniqueByClock.has(m)) uniqueByClock.set(m, t);
+      }
+      const uniqueScheduleTimes = [...uniqueByClock.values()];
+
       for (const day of newScheduleDates) {
         const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
         const existing = dateSchedules.get(dateKey);
-        const existingTimes = new Set(
-          existing?.schedules.map((s) => s.time) ?? [],
+        const existingMinutes = new Set(
+          (existing?.schedules ?? []).map((s) => timeToMinutes(s.time)),
         );
 
-        for (const timeString of newScheduleTimes) {
-          if (existingTimes.has(timeString)) {
-            // Same date + same time already exists — skip it
+        for (const timeString of uniqueScheduleTimes) {
+          const m = timeToMinutes(timeString);
+          if (existingMinutes.has(m)) {
             skipped.push(`${MONTHS[currentMonth]} ${day} @ ${timeString}`);
             continue;
           }
@@ -808,7 +814,7 @@ export default function IrrigationScheduleScreen() {
         throw error;
       }
 
-      await syncTimeScheduleTemplates(currentScheduleId, newScheduleTimes);
+      await syncTimeScheduleTemplates(currentScheduleId, uniqueScheduleTimes);
 
       const todayDate = new Date();
       const todayDay = todayDate.getDate();
@@ -831,7 +837,7 @@ export default function IrrigationScheduleScreen() {
             schedules: [],
           });
         const todaySchedule = currentMap.get(todayDateKey)!;
-        newScheduleTimes.forEach((timeString) => {
+        uniqueScheduleTimes.forEach((timeString) => {
           const inserted = data?.find((d) => {
             const dDate = new Date(d.scheduled_date);
             return (
@@ -916,6 +922,18 @@ export default function IrrigationScheduleScreen() {
       }
     }
 
+    const duplicateInList = newScheduleTimes.some((t, i) => {
+      if (editingTimeIndex !== null && i === editingTimeIndex) return false;
+      return timesMatchClock(t, timeString);
+    });
+    if (duplicateInList) {
+      Alert.alert(
+        "Duplicate time",
+        "That time is already in your list. Choose a different time or remove the existing one first.",
+      );
+      return;
+    }
+
     if (editingTimeIndex !== null) {
       const updated = [...newScheduleTimes];
       updated[editingTimeIndex] = timeString;
@@ -992,6 +1010,10 @@ export default function IrrigationScheduleScreen() {
     }
   };
 
+  /** Same clock time (avoids duplicate "08:00 AM" vs "8:00 AM" if formats differ). */
+  const timesMatchClock = (a: string, b: string): boolean =>
+    timeToMinutes(a) === timeToMinutes(b);
+
   const getTodayScheduledTimes = (): { time: string; minutes: number }[] => {
     const todayDate = new Date();
     const dateKey = `${todayDate.getFullYear()}-${todayDate.getMonth() + 1}-${todayDate.getDate()}`;
@@ -1063,22 +1085,24 @@ export default function IrrigationScheduleScreen() {
     }
   };
 
-  const filterPastSchedules = (s: DateSchedule): DateSchedule => {
+  /** True if this date+time is already over (for gray styling; delete still allowed). */
+  const isScheduleTimePast = (
+    year: number,
+    month: number,
+    day: number,
+    timeStr: string,
+  ): boolean => {
+    if (!timeStr || timeStr === "Not set") return false;
     const now = new Date();
+    const dayStart = new Date(year, month - 1, day);
+    dayStart.setHours(0, 0, 0, 0);
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    if (dayStart.getTime() < todayStart.getTime()) return true;
+    if (dayStart.getTime() > todayStart.getTime()) return false;
+    const timeMin = timeToMinutes(timeStr);
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    const scheduleDate = new Date(s.year, s.month - 1, s.day);
-    const todayDate = new Date();
-    todayDate.setHours(0, 0, 0, 0);
-    scheduleDate.setHours(0, 0, 0, 0);
-    if (scheduleDate.getTime() === todayDate.getTime())
-      return {
-        ...s,
-        schedules: s.schedules.filter(
-          (sc) => timeToMinutes(sc.time) > currentMinutes,
-        ),
-      };
-    if (scheduleDate < todayDate) return { ...s, schedules: [] };
-    return s;
+    return timeMin <= currentMinutes;
   };
 
   // Get today's scheduled times list for TIME SCHEDULE card
@@ -1171,7 +1195,9 @@ export default function IrrigationScheduleScreen() {
                       isPast && styles.pastDay,
                     ]}
                     onPress={() => day && handleDateClick(day)}
-                    disabled={day === null || isPast}
+                    disabled={
+                      day === null || (isPast && !isDateScheduled(day ?? 0))
+                    }
                   >
                     <Text
                       style={[
@@ -1550,12 +1576,12 @@ export default function IrrigationScheduleScreen() {
               </View>
               {selectedScheduleInfo &&
                 (() => {
-                  const filtered = filterPastSchedules(selectedScheduleInfo);
-                  if (filtered.schedules.length === 0)
+                  const rows = selectedScheduleInfo.schedules;
+                  if (rows.length === 0)
                     return (
                       <View style={styles.scheduleInfoBody}>
                         <Text style={styles.noSchedulesText}>
-                          No upcoming schedules for this date.
+                          No schedules for this date.
                         </Text>
                       </View>
                     );
@@ -1570,7 +1596,8 @@ export default function IrrigationScheduleScreen() {
                         <View style={styles.infoContent}>
                           <Text style={styles.infoLabel}>Date</Text>
                           <Text style={styles.infoValue}>
-                            {MONTHS[currentMonth]} {selectedScheduleInfo.day},{" "}
+                            {MONTHS[selectedScheduleInfo.month - 1]}{" "}
+                            {selectedScheduleInfo.day},{" "}
                             {selectedScheduleInfo.year}
                           </Text>
                         </View>
@@ -1583,26 +1610,50 @@ export default function IrrigationScheduleScreen() {
                         />
                         <View style={styles.infoContent}>
                           <Text style={styles.infoLabel}>Time(s)</Text>
+                          <Text style={styles.infoHintPast}>
+                            Past times appear gray; you can remove any time with
+                            ×.
+                          </Text>
                           <View style={styles.timesList}>
-                            {filtered.schedules.map((schedule) => (
-                              <View key={schedule.id} style={styles.timeItem}>
-                                <Text style={styles.timeItemText}>
-                                  {schedule.time}
-                                </Text>
-                                <TouchableOpacity
-                                  style={styles.timeItemDeleteButton}
-                                  onPress={() =>
-                                    deleteScheduleDate(schedule.id)
-                                  }
+                            {rows.map((schedule) => {
+                              const past = isScheduleTimePast(
+                                selectedScheduleInfo.year,
+                                selectedScheduleInfo.month,
+                                selectedScheduleInfo.day,
+                                schedule.time,
+                              );
+                              return (
+                                <View
+                                  key={schedule.id}
+                                  style={[
+                                    styles.timeItem,
+                                    past && styles.timeItemPast,
+                                  ]}
                                 >
-                                  <FontAwesome
-                                    name="times"
-                                    size={12}
-                                    color="#EF4444"
-                                  />
-                                </TouchableOpacity>
-                              </View>
-                            ))}
+                                  <Text
+                                    style={[
+                                      styles.timeItemText,
+                                      past && styles.timeItemTextPast,
+                                    ]}
+                                  >
+                                    {schedule.time}
+                                  </Text>
+                                  <TouchableOpacity
+                                    style={styles.timeItemDeleteButton}
+                                    onPress={() =>
+                                      deleteScheduleDate(schedule.id)
+                                    }
+                                    accessibilityLabel="Delete schedule"
+                                  >
+                                    <FontAwesome
+                                      name="times"
+                                      size={12}
+                                      color="#EF4444"
+                                    />
+                                  </TouchableOpacity>
+                                </View>
+                              );
+                            })}
                           </View>
                         </View>
                       </View>
@@ -1956,6 +2007,12 @@ const styles = StyleSheet.create({
     borderColor: colors.grayBorder,
   },
   timeItemText: { fontFamily: fonts.medium, fontSize: 14, color: colors.dark },
+  timeItemPast: {
+    backgroundColor: "#F1F5F9",
+    borderColor: colors.grayBorder,
+    opacity: 0.95,
+  },
+  timeItemTextPast: { color: colors.grayText },
   timeItemActions: { flexDirection: "row", gap: 8 },
   timeItemButton: { padding: 4 },
   timeItemDeleteButton: { padding: 4 },
@@ -2118,6 +2175,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.grayText,
     marginBottom: 4,
+  },
+  infoHintPast: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: colors.grayText,
+    marginBottom: 8,
+    opacity: 0.9,
   },
   infoValue: { fontFamily: fonts.semibold, fontSize: 16, color: colors.dark },
   noSchedulesText: {
