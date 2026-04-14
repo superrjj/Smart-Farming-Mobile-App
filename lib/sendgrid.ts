@@ -1,15 +1,12 @@
-import { SENDGRID_CONFIG } from './sendgridConfig';
+import { SENDGRID_CONFIG } from "./sendgridConfig";
+import { supabase } from "./supabase";
 
-export async function sendPasswordResetCode(email: string, verificationCode: string) {
-  if (!SENDGRID_CONFIG.apiKey) {
-    throw new Error('SendGrid API key not configured. Set EXPO_PUBLIC_SENDGRID_API_KEY in .env or EAS env');
-  }
-  if (!SENDGRID_CONFIG.fromEmail?.trim()) {
-    throw new Error('SendGrid from email not configured. Set EXPO_PUBLIC_SENDGRID_FROM_EMAIL in .env');
-  }
-
-  const htmlContent = `
-<!DOCTYPE html>
+/**
+ * HTML layout for the password-reset email (used for client-side SendGrid).
+ * The Edge Function uses an equivalent template on the server.
+ */
+export function buildPasswordResetEmailHtml(verificationCode: string): string {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -56,19 +53,87 @@ export async function sendPasswordResetCode(email: string, verificationCode: str
   </div>
 </body>
 </html>`;
+}
 
-  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-    method: 'POST',
+function buildPasswordResetPlainText(verificationCode: string): string {
+  return `Password Reset – AgriHydra\n\nYour verification code: ${verificationCode}\n\nValid for 10 minutes. Enter it in the app to reset your password.\n\nIf you didn't request this, ignore this email.\n\n— AgriHydra\nThis is an automated message. Please do not reply.`;
+}
+
+/** When true, reset email + code storage use Supabase Edge Functions (recommended). */
+export function isPasswordResetEdgeEnabled(): boolean {
+  const v = process.env.EXPO_PUBLIC_PASSWORD_RESET_USE_EDGE;
+  return v === "true" || v === "1";
+}
+
+async function sendPasswordResetViaEdgeFunction(
+  email: string,
+  verificationCode?: string,
+) {
+  const body =
+    verificationCode !== undefined && verificationCode.trim() !== ""
+      ? { email, verificationCode: verificationCode.trim() }
+      : { email };
+
+  const { data, error } = await supabase.functions.invoke(
+    "send-password-reset",
+    {
+      body,
+    },
+  );
+
+  if (error) {
+    throw new Error(
+      error.message || "Failed to send verification code email",
+    );
+  }
+
+  if (
+    data &&
+    typeof data === "object" &&
+    "error" in data &&
+    typeof (data as { error?: unknown }).error === "string"
+  ) {
+    throw new Error((data as { error: string }).error);
+  }
+
+  return { success: true };
+}
+
+async function sendPasswordResetViaClientSendGrid(
+  email: string,
+  verificationCode: string,
+) {
+  if (!SENDGRID_CONFIG.apiKey) {
+    throw new Error(
+      "SendGrid API key not configured. Set EXPO_PUBLIC_SENDGRID_API_KEY in .env or EAS env — or deploy the Supabase function and set EXPO_PUBLIC_PASSWORD_RESET_USE_EDGE=true",
+    );
+  }
+  if (!SENDGRID_CONFIG.fromEmail?.trim()) {
+    throw new Error(
+      "SendGrid from email not configured. Set EXPO_PUBLIC_SENDGRID_FROM_EMAIL in .env",
+    );
+  }
+
+  const htmlContent = buildPasswordResetEmailHtml(verificationCode);
+
+  const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${SENDGRID_CONFIG.apiKey}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${SENDGRID_CONFIG.apiKey}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      personalizations: [{ to: [{ email }], subject: 'Password Reset – AgriHydra' }],
-      from: { email: SENDGRID_CONFIG.fromEmail, name: 'AgriHydra - Smart Farming for String Beans' },
+      personalizations: [{ to: [{ email }], subject: "Password Reset – AgriHydra" }],
+      from: {
+        email: SENDGRID_CONFIG.fromEmail,
+        name: "AgriHydra - Smart Farming for String Beans",
+      },
       content: [
-        { type: 'text/plain', value: `Password Reset – AgriHydra\n\nYour verification code: ${verificationCode}\n\nValid for 10 minutes. Enter it in the app to reset your password.\n\nIf you didn't request this, ignore this email.\n\n— AgriHydra\nThis is an automated message. Please do not reply.` },
-        { type: 'text/html', value: htmlContent },
+        {
+          type: "text/plain",
+          value: buildPasswordResetPlainText(verificationCode),
+        },
+        { type: "text/html", value: htmlContent },
       ],
     }),
   });
@@ -77,11 +142,79 @@ export async function sendPasswordResetCode(email: string, verificationCode: str
     const text = await response.text();
     let detail = text;
     try {
-      const json = JSON.parse(text);
-      detail = json.errors?.map((e: { message?: string }) => e.message).join('; ') || text;
-    } catch { /* keep text */ }
-    throw new Error(`Failed to send verification code email: ${response.status} ${detail}`);
+      const json = JSON.parse(text) as {
+        errors?: Array<{ message?: string }>;
+      };
+      detail =
+        json.errors?.map((e) => e.message).filter(Boolean).join("; ") ||
+        text;
+    } catch {
+      /* keep text */
+    }
+    throw new Error(
+      `Failed to send verification code email: ${response.status} ${detail}`,
+    );
   }
 
   return { success: true };
+}
+
+/**
+ * Sends the password-reset email.
+ *
+ * - **Edge mode** (`EXPO_PUBLIC_PASSWORD_RESET_USE_EDGE=true`): pass only `email` so the server generates the code and stores a hash + 10‑minute expiry in `user_profiles`. You may still pass `verificationCode` for legacy flows.
+ * - **Client SendGrid mode:** pass `email` and a 6-digit `verificationCode` (the app must verify it, e.g. in-memory for 10 minutes — see login screen).
+ */
+export async function sendPasswordResetCode(
+  email: string,
+  verificationCode?: string,
+) {
+  if (isPasswordResetEdgeEnabled()) {
+    return sendPasswordResetViaEdgeFunction(email, verificationCode);
+  }
+  if (!verificationCode?.trim()) {
+    throw new Error(
+      "verificationCode is required when not using the Edge function",
+    );
+  }
+  return sendPasswordResetViaClientSendGrid(email, verificationCode.trim());
+}
+
+/** Requires Edge mode + deployed `verify-password-reset` function. */
+export async function verifyPasswordResetCode(
+  email: string,
+  verificationCode: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.functions.invoke(
+    "verify-password-reset",
+    {
+      body: { email, verificationCode },
+    },
+  );
+
+  if (error) {
+    throw new Error(error.message || "Verification request failed");
+  }
+
+  if (data && typeof data === "object" && "valid" in data) {
+    return Boolean((data as { valid: boolean }).valid);
+  }
+
+  return false;
+}
+
+/** Clears stored reset token after a successful password change (Edge mode). */
+export async function invalidatePasswordResetCode(
+  email: string,
+  verificationCode: string,
+): Promise<void> {
+  const { error } = await supabase.functions.invoke(
+    "invalidate-password-reset",
+    {
+      body: { email, verificationCode },
+    },
+  );
+  if (error) {
+    console.warn("invalidate-password-reset:", error.message);
+  }
 }

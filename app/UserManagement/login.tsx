@@ -1,5 +1,10 @@
 import { fontScale, scale } from "@/lib/responsive";
-import { sendPasswordResetCode } from "@/lib/sendgrid";
+import {
+  invalidatePasswordResetCode,
+  isPasswordResetEdgeEnabled,
+  sendPasswordResetCode,
+  verifyPasswordResetCode,
+} from "@/lib/sendgrid";
 import {
   clearSavedCredentials,
   getSavedCredentials,
@@ -69,6 +74,13 @@ export default function LoginScreen() {
   );
   const [forgotEmailMessageType, setForgotEmailMessageType] = useState<
     "success" | "error" | null
+  >(null);
+  /** Client-side SendGrid only: code + expiry until Edge mode stores hashes in Supabase. */
+  const [pendingResetCode, setPendingResetCode] = useState<string | null>(
+    null,
+  );
+  const [pendingResetExpiresAt, setPendingResetExpiresAt] = useState<
+    number | null
   >(null);
   const [rememberMe, setRememberMe] = useState(false);
 
@@ -212,9 +224,16 @@ export default function LoginScreen() {
         return;
       }
 
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-
-      await sendPasswordResetCode(forgotEmail, code);
+      if (isPasswordResetEdgeEnabled()) {
+        await sendPasswordResetCode(forgotEmail);
+        setPendingResetCode(null);
+        setPendingResetExpiresAt(null);
+      } else {
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        setPendingResetCode(code);
+        setPendingResetExpiresAt(Date.now() + 10 * 60 * 1000);
+        await sendPasswordResetCode(forgotEmail, code);
+      }
 
       setForgotStep(2);
       startCountdown();
@@ -227,13 +246,60 @@ export default function LoginScreen() {
     }
   };
 
-  const handleVerifyCode = () => {
-    if (!verificationCode) {
+  const handleVerifyCode = async () => {
+    const entered = verificationCode.trim();
+    if (!entered) {
       Alert.alert("Error", "Please enter the verification code");
       return;
     }
+    if (entered.length !== 6 || !/^\d{6}$/.test(entered)) {
+      Alert.alert("Error", "Enter the 6-digit code from your email");
+      return;
+    }
 
-    setForgotStep(3);
+    setLoading(true);
+    try {
+      if (isPasswordResetEdgeEnabled()) {
+        const ok = await verifyPasswordResetCode(forgotEmail, entered);
+        if (!ok) {
+          Alert.alert(
+            "Error",
+            "Invalid or expired verification code. Request a new code if needed.",
+          );
+          return;
+        }
+      } else {
+        if (!pendingResetCode || !pendingResetExpiresAt) {
+          Alert.alert(
+            "Error",
+            "Please request a verification code first using Send Code.",
+          );
+          return;
+        }
+        if (Date.now() > pendingResetExpiresAt) {
+          setPendingResetCode(null);
+          setPendingResetExpiresAt(null);
+          Alert.alert(
+            "Error",
+            "This code has expired (10 minutes). Tap Resend code to get a new one.",
+          );
+          return;
+        }
+        if (entered !== pendingResetCode) {
+          Alert.alert("Error", "That code does not match. Check your email.");
+          return;
+        }
+      }
+
+      setForgotStep(3);
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error.message || "Could not verify the code. Try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleResetPassword = async () => {
@@ -260,6 +326,16 @@ export default function LoginScreen() {
         .eq("email", forgotEmail);
 
       if (updateError) throw updateError;
+
+      if (isPasswordResetEdgeEnabled()) {
+        await invalidatePasswordResetCode(
+          forgotEmail,
+          verificationCode.trim(),
+        );
+      } else {
+        setPendingResetCode(null);
+        setPendingResetExpiresAt(null);
+      }
 
       Alert.alert(
         "Success",
@@ -303,6 +379,8 @@ export default function LoginScreen() {
     setCountdown(0);
     setForgotEmailMessage(null);
     setForgotEmailMessageType(null);
+    setPendingResetCode(null);
+    setPendingResetExpiresAt(null);
   };
 
   return (
@@ -565,10 +643,16 @@ export default function LoginScreen() {
                     />
                   </View>
                   <TouchableOpacity
-                    style={styles.sendButton}
+                    style={[
+                      styles.sendButton,
+                      loading && styles.sendButtonDisabled,
+                    ]}
                     onPress={handleVerifyCode}
+                    disabled={loading}
                   >
-                    <Text style={styles.sendButtonText}>Verify Code</Text>
+                    <Text style={styles.sendButtonText}>
+                      {loading ? "Verifying..." : "Verify Code"}
+                    </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.resendButton}

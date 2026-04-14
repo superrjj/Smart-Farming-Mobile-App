@@ -722,13 +722,18 @@ export default function IrrigationScheduleScreen() {
         .eq("time", t)
         .maybeSingle();
       if (existing) continue;
-      const { error } = await supabase.from("irrigation_time_schedules").insert({
-        schedule_id: scheduleId,
-        time: t,
-        enabled: true,
-      });
+      const { error } = await supabase
+        .from("irrigation_time_schedules")
+        .insert({
+          schedule_id: scheduleId,
+          time: t,
+          enabled: true,
+        });
       if (error) {
-        console.warn("[irrigationSchedule] irrigation_time_schedules insert:", error.message);
+        console.warn(
+          "[irrigationSchedule] irrigation_time_schedules insert:",
+          error.message,
+        );
       }
     }
   };
@@ -758,9 +763,7 @@ export default function IrrigationScheduleScreen() {
         for (const timeString of newScheduleTimes) {
           if (existingTimes.has(timeString)) {
             // Same date + same time already exists — skip it
-            skipped.push(
-              `${MONTHS[currentMonth]} ${day} @ ${timeString}`,
-            );
+            skipped.push(`${MONTHS[currentMonth]} ${day} @ ${timeString}`);
             continue;
           }
           insertData.push({
@@ -1683,7 +1686,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: colors.white,
+    backgroundColor: colors.grayLight,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.grayBorder,
     shadowColor: "#000",
