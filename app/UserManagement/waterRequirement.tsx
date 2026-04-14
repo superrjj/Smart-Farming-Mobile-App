@@ -114,13 +114,14 @@ function InputField({
   hint: string;
   inputStyle?: any;
 }) {
+  const [hasBlurred, setHasBlurred] = useState(false);
   const parsed = Number(value);
-  const isWithinRecommended = recommended
-    ? value.trim().length > 0 &&
-      !Number.isNaN(parsed) &&
-      parsed >= recommended.min &&
-      parsed <= recommended.max
-    : true;
+  const isOutside =
+    hasBlurred &&
+    recommended &&
+    value.trim().length > 0 &&
+    !Number.isNaN(parsed) &&
+    (parsed < recommended.min || parsed > recommended.max);
 
   return (
     <View style={styles.inputGroup}>
@@ -139,10 +140,11 @@ function InputField({
           style={[
             styles.input,
             inputStyle,
-            !isWithinRecommended && styles.inputWarning,
+            isOutside && styles.inputWarning,
           ]}
           value={value}
           onChangeText={onChange}
+          onBlur={() => setHasBlurred(true)}
           keyboardType="numeric"
           placeholder={hint}
           placeholderTextColor={colors.grayText}
@@ -150,9 +152,9 @@ function InputField({
         <Text style={styles.unitText}>{unit}</Text>
       </View>
       {description && <Text style={styles.descriptionText}>{description}</Text>}
-      {recommended && !isWithinRecommended && (
+      {isOutside && (
         <Text style={styles.warningText}>
-          ⚠️ Value outside recommended range
+          ⚠️ Outside recommended range ({recommended!.min}–{recommended!.max} {unit})
         </Text>
       )}
     </View>
@@ -182,6 +184,24 @@ function RangeInput({
   minHint: string;
   maxHint: string;
 }) {
+  const [hasBlurredMin, setHasBlurredMin] = useState(false);
+  const [hasBlurredMax, setHasBlurredMax] = useState(false);
+
+  const parsedMin = Number(minValue);
+  const parsedMax = Number(maxValue);
+  const isMinOutside =
+    hasBlurredMin &&
+    recommended &&
+    minValue.trim().length > 0 &&
+    !Number.isNaN(parsedMin) &&
+    (parsedMin < recommended.min || parsedMin > recommended.max);
+  const isMaxOutside =
+    hasBlurredMax &&
+    recommended &&
+    maxValue.trim().length > 0 &&
+    !Number.isNaN(parsedMax) &&
+    (parsedMax < recommended.min || parsedMax > recommended.max);
+
   return (
     <View style={styles.rangeGroup}>
       <View style={styles.inputHeader}>
@@ -198,13 +218,22 @@ function RangeInput({
         <View style={styles.rangeInputContainer}>
           <Text style={styles.rangeLabel}>Min</Text>
           <TextInput
-            style={styles.rangeInput}
+            style={[
+              styles.rangeInput,
+              isMinOutside && styles.inputWarning,
+            ]}
             value={minValue}
             onChangeText={onMinChange}
+            onBlur={() => setHasBlurredMin(true)}
             keyboardType="numeric"
             placeholder={minHint}
             placeholderTextColor={colors.grayText}
           />
+          {isMinOutside && (
+            <Text style={styles.warningText}>
+              ⚠️ Below {recommended!.min} {unit}
+            </Text>
+          )}
           <Text style={styles.rangeUnit}>{unit}</Text>
         </View>
         <View style={styles.rangeSeparator}>
@@ -213,13 +242,22 @@ function RangeInput({
         <View style={styles.rangeInputContainer}>
           <Text style={styles.rangeLabel}>Max</Text>
           <TextInput
-            style={styles.rangeInput}
+            style={[
+              styles.rangeInput,
+              isMaxOutside && styles.inputWarning,
+            ]}
             value={maxValue}
             onChangeText={onMaxChange}
+            onBlur={() => setHasBlurredMax(true)}
             keyboardType="numeric"
             placeholder={maxHint}
             placeholderTextColor={colors.grayText}
           />
+          {isMaxOutside && (
+            <Text style={styles.warningText}>
+              ⚠️ Above {recommended!.max} {unit}
+            </Text>
+          )}
           <Text style={styles.rangeUnit}>{unit}</Text>
         </View>
       </View>
@@ -316,6 +354,67 @@ export default function WaterRequirementScreen() {
     }
   };
 
+  const performSave = async (vals: {
+    soilMoistureMin: number;
+    soilMoistureMax: number;
+    temperatureMin: number;
+    temperatureMax: number;
+    humidityMin: number;
+    humidityMax: number;
+    irrigationDuration: number;
+    irrigationFrequency: number;
+  }) => {
+    if (!userId) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase.from("water_requirements").upsert(
+        {
+          user_id: userId,
+          soil_moisture_min: vals.soilMoistureMin,
+          soil_moisture_max: vals.soilMoistureMax,
+          temperature_min: vals.temperatureMin,
+          temperature_max: vals.temperatureMax,
+          humidity_min: vals.humidityMin,
+          humidity_max: vals.humidityMax,
+          irrigation_duration: vals.irrigationDuration,
+          irrigation_frequency: vals.irrigationFrequency,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: "user_id",
+        },
+      );
+
+      if (error) {
+        if (
+          error.code === "PGRST205" ||
+          error.message?.includes("Could not find the table")
+        ) {
+          Alert.alert(
+            "Table Not Found",
+            "The water_requirements table does not exist in the database. Please create it first using the SQL script in DATABASE_SCHEMA.md",
+            [{ text: "OK" }],
+          );
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      Alert.alert("Success", "Water requirements saved successfully!", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
+    } catch (error: any) {
+      console.error("Error saving requirements:", error);
+      Alert.alert(
+        "Error",
+        error.message || "Failed to save water requirements",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     const parseValue = (value: string, label: string): number | null => {
       const trimmed = value.trim();
@@ -372,92 +471,84 @@ export default function WaterRequirementScreen() {
     );
     if (irrigationFrequency === null) return;
 
-    // Validation
+    // Structural validation — these block saving
     if (soilMoistureMin >= soilMoistureMax) {
       Alert.alert("Error", "Minimum soil moisture must be less than maximum");
       return;
     }
-
     if (temperatureMin >= temperatureMax) {
       Alert.alert("Error", "Minimum temperature must be less than maximum");
       return;
     }
-
     if (humidityMin >= humidityMax) {
       Alert.alert("Error", "Minimum humidity must be less than maximum");
       return;
     }
-
-    if (irrigationDuration < 5 || irrigationDuration > 60) {
-      Alert.alert(
-        "Error",
-        "Irrigation duration must be between 5 and 60 minutes",
-      );
-      return;
-    }
-
-    if (irrigationFrequency < 1 || irrigationFrequency > 5) {
-      Alert.alert(
-        "Error",
-        "Irrigation frequency must be between 1 and 5 times per day",
-      );
-      return;
-    }
-
     if (!userId) {
       Alert.alert("Error", "User not found");
       return;
     }
 
-    setSaving(true);
-    try {
-      const { error } = await supabase.from("water_requirements").upsert(
-        {
-          user_id: userId,
-          soil_moisture_min: soilMoistureMin,
-          soil_moisture_max: soilMoistureMax,
-          temperature_min: temperatureMin,
-          temperature_max: temperatureMax,
-          humidity_min: humidityMin,
-          humidity_max: humidityMax,
-          irrigation_duration: irrigationDuration,
-          irrigation_frequency: irrigationFrequency,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "user_id",
-        },
+    // Advisory warnings — do NOT block saving
+    const warnings: string[] = [];
+    if (
+      soilMoistureMin < STRING_BEANS_RECOMMENDATIONS.soilMoisture.min ||
+      soilMoistureMax > STRING_BEANS_RECOMMENDATIONS.soilMoisture.max
+    ) {
+      warnings.push(
+        `Soil moisture (${soilMoistureMin}–${soilMoistureMax}%) is outside the recommended range (${STRING_BEANS_RECOMMENDATIONS.soilMoisture.min}–${STRING_BEANS_RECOMMENDATIONS.soilMoisture.max}%).`,
       );
-
-      if (error) {
-        // Check if table doesn't exist
-        if (
-          error.code === "PGRST205" ||
-          error.message?.includes("Could not find the table")
-        ) {
-          Alert.alert(
-            "Table Not Found",
-            "The water_requirements table does not exist in the database. Please create it first using the SQL script in DATABASE_SCHEMA.md",
-            [{ text: "OK" }],
-          );
-        } else {
-          throw error;
-        }
-        return;
-      }
-
-      Alert.alert("Success", "Water requirements saved successfully!", [
-        { text: "OK", onPress: () => router.back() },
-      ]);
-    } catch (error: any) {
-      console.error("Error saving requirements:", error);
-      Alert.alert(
-        "Error",
-        error.message || "Failed to save water requirements",
-      );
-    } finally {
-      setSaving(false);
     }
+    if (
+      temperatureMin < STRING_BEANS_RECOMMENDATIONS.temperature.min ||
+      temperatureMax > STRING_BEANS_RECOMMENDATIONS.temperature.max
+    ) {
+      warnings.push(
+        `Temperature (${temperatureMin}–${temperatureMax}°C) is outside the recommended range (${STRING_BEANS_RECOMMENDATIONS.temperature.min}–${STRING_BEANS_RECOMMENDATIONS.temperature.max}°C).`,
+      );
+    }
+    if (
+      humidityMin < STRING_BEANS_RECOMMENDATIONS.humidity.min ||
+      humidityMax > STRING_BEANS_RECOMMENDATIONS.humidity.max
+    ) {
+      warnings.push(
+        `Humidity (${humidityMin}–${humidityMax}%) is outside the recommended range (${STRING_BEANS_RECOMMENDATIONS.humidity.min}–${STRING_BEANS_RECOMMENDATIONS.humidity.max}%).`,
+      );
+    }
+    if (
+      irrigationDuration < STRING_BEANS_RECOMMENDATIONS.irrigationDuration.min ||
+      irrigationDuration > STRING_BEANS_RECOMMENDATIONS.irrigationDuration.max
+    ) {
+      warnings.push(
+        `Irrigation duration (${irrigationDuration} min) is outside the recommended range (${STRING_BEANS_RECOMMENDATIONS.irrigationDuration.min}–${STRING_BEANS_RECOMMENDATIONS.irrigationDuration.max} min).`,
+      );
+    }
+    if (
+      irrigationFrequency < STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.min ||
+      irrigationFrequency > STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.max
+    ) {
+      warnings.push(
+        `Irrigation frequency (${irrigationFrequency}x/day) is outside the recommended range (${STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.min}–${STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.max}x/day).`,
+      );
+    }
+
+    if (warnings.length > 0) {
+      Alert.alert(
+        "⚠️ Outside Recommended Range",
+        `The following values exceed standard recommendations for string beans:\n\n${warnings.join("\n\n")}\n\nYou can still save these custom values.`,
+        [
+          { text: "Go Back", style: "cancel" },
+          {
+            text: "Save Anyway",
+            onPress: () =>
+              performSave({ soilMoistureMin, soilMoistureMax, temperatureMin, temperatureMax, humidityMin, humidityMax, irrigationDuration, irrigationFrequency }),
+          },
+        ],
+      );
+      return;
+    }
+
+    await performSave({ soilMoistureMin, soilMoistureMax, temperatureMin, temperatureMax, humidityMin, humidityMax, irrigationDuration, irrigationFrequency });
   };
 
   const handleResetToRecommended = () => {

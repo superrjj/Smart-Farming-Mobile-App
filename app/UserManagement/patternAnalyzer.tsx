@@ -362,6 +362,7 @@ const ScoreBarChart = ({
   selectedMonth: string;
   onSelectMonth: (m: string) => void;
 }) => {
+  const BAR_AREA_H = 80;
   const BAR_W = Math.max(28, (SCREEN_W - 64) / Math.max(data.length, 1));
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -369,7 +370,7 @@ const ScoreBarChart = ({
         style={{
           flexDirection: "row",
           alignItems: "flex-end",
-          height: 120,
+          height: BAR_AREA_H + 40,
           gap: 4,
           paddingHorizontal: 4,
         }}
@@ -377,6 +378,7 @@ const ScoreBarChart = ({
         {data.map((m, i) => {
           const s = getScoreStyle(m.growScore);
           const isSelected = selectedMonth === m.shortLabel;
+          const barH = Math.max(2, (m.growScore / 100) * BAR_AREA_H);
           return (
             <Pressable
               key={i}
@@ -398,14 +400,14 @@ const ScoreBarChart = ({
               <View
                 style={{
                   width: "100%",
-                  height: 80,
+                  height: BAR_AREA_H,
                   justifyContent: "flex-end",
                 }}
               >
                 <View
                   style={{
                     width: "100%",
-                    height: `${m.growScore}%`,
+                    height: barH,
                     backgroundColor: s.color,
                     borderRadius: 4,
                     opacity: m.isPartial ? 0.35 : isSelected ? 1 : 0.75,
@@ -556,6 +558,20 @@ const MultiLineChart = ({
       <View
         style={{ width: Math.max(W, data.length * 36), height: height + 28 }}
       >
+        {/* Horizontal grid lines at 25%, 50%, 75%, 100% */}
+        {[0.25, 0.5, 0.75, 1].map((pct) => (
+          <View
+            key={`grid-${pct}`}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: height * (1 - pct),
+              height: 1,
+              backgroundColor: "#E2E8F0",
+            }}
+          />
+        ))}
         {refLines?.map((ref, ri) => {
           const refY = getY(ref.value);
           if (refY == null) return null;

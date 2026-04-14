@@ -260,6 +260,7 @@ export default function IrrigationScheduleScreen() {
   const [selectedMinute, setSelectedMinute] = useState("00");
   const [editingTimeIndex, setEditingTimeIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentScheduleId, setCurrentScheduleId] = useState<string | null>(
     null,
   );
@@ -741,10 +742,27 @@ export default function IrrigationScheduleScreen() {
       Alert.alert("Error", "Please select at least one date and one time");
       return;
     }
+    if (isSubmitting) return; // guard against double-tap
+    setIsSubmitting(true);
     try {
       const insertData: Record<string, unknown>[] = [];
+      const skipped: string[] = [];
+
       for (const day of newScheduleDates) {
+        const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
+        const existing = dateSchedules.get(dateKey);
+        const existingTimes = new Set(
+          existing?.schedules.map((s) => s.time) ?? [],
+        );
+
         for (const timeString of newScheduleTimes) {
+          if (existingTimes.has(timeString)) {
+            // Same date + same time already exists — skip it
+            skipped.push(
+              `${MONTHS[currentMonth]} ${day} @ ${timeString}`,
+            );
+            continue;
+          }
           insertData.push({
             schedule_id: currentScheduleId,
             scheduled_date: toScheduledDateString(
@@ -760,6 +778,18 @@ export default function IrrigationScheduleScreen() {
           });
         }
       }
+
+      if (insertData.length === 0) {
+        Alert.alert(
+          "Already Scheduled",
+          skipped.length > 0
+            ? `The following slot(s) already exist and were not added:\n${skipped.join("\n")}`
+            : "All selected date/time combinations are already scheduled.",
+        );
+        setIsSubmitting(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("irrigation_scheduled_dates")
         .insert(insertData)
@@ -823,6 +853,8 @@ export default function IrrigationScheduleScreen() {
     } catch (error) {
       console.error("Error adding schedule:", error);
       Alert.alert("Error", "Failed to add schedule");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -853,6 +885,34 @@ export default function IrrigationScheduleScreen() {
 
   const handleConfirmTime = () => {
     const timeString = `${selectedHour}:${selectedMinute} ${newSchedulePeriod}`;
+
+    // If today is one of the selected dates, block past times
+    const todayDate = new Date();
+    const todayDay = todayDate.getDate();
+    const todayMonth = todayDate.getMonth() + 1;
+    const todayYear = todayDate.getFullYear();
+    const todayIsSelected =
+      currentMonth + 1 === todayMonth &&
+      currentYear === todayYear &&
+      newScheduleDates.includes(todayDay);
+
+    if (todayIsSelected) {
+      let hour = Number(selectedHour);
+      const minute = Number(selectedMinute);
+      if (newSchedulePeriod === "PM" && hour !== 12) hour += 12;
+      if (newSchedulePeriod === "AM" && hour === 12) hour = 0;
+      const selectedTotalMinutes = hour * 60 + minute;
+      const nowTotalMinutes =
+        todayDate.getHours() * 60 + todayDate.getMinutes();
+      if (selectedTotalMinutes <= nowTotalMinutes) {
+        Alert.alert(
+          "Past Time",
+          `${timeString} has already passed for today. Please select a future time.`,
+        );
+        return;
+      }
+    }
+
     if (editingTimeIndex !== null) {
       const updated = [...newScheduleTimes];
       updated[editingTimeIndex] = timeString;
@@ -1437,6 +1497,7 @@ export default function IrrigationScheduleScreen() {
                   <TouchableOpacity
                     style={styles.cancelButton}
                     onPress={() => setAddScheduleModalVisible(false)}
+                    disabled={isSubmitting}
                   >
                     <Text style={styles.cancelButtonText}>Cancel</Text>
                   </TouchableOpacity>
@@ -1444,16 +1505,22 @@ export default function IrrigationScheduleScreen() {
                     style={[
                       styles.addButton,
                       (newScheduleDates.length === 0 ||
-                        newScheduleTimes.length === 0) &&
+                        newScheduleTimes.length === 0 ||
+                        isSubmitting) &&
                         styles.addButtonDisabled,
                     ]}
                     onPress={addNewSchedule}
                     disabled={
                       newScheduleDates.length === 0 ||
-                      newScheduleTimes.length === 0
+                      newScheduleTimes.length === 0 ||
+                      isSubmitting
                     }
                   >
-                    <Text style={styles.addButtonText}>Add Schedule</Text>
+                    {isSubmitting ? (
+                      <ActivityIndicator size="small" color={colors.white} />
+                    ) : (
+                      <Text style={styles.addButtonText}>Add Schedule</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               )}
