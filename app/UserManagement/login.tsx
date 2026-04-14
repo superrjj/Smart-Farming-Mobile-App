@@ -1,3 +1,6 @@
+import { AdminAccessDeniedModal } from "@/components/admin-access-denied-modal";
+import { fetchUserProfileByCredentials } from "@/lib/fetchUserProfileByCredentials";
+import { isAdminRole } from "@/lib/isAdminRole";
 import { fontScale, scale } from "@/lib/responsive";
 import {
   invalidatePasswordResetCode,
@@ -11,9 +14,6 @@ import {
   saveCredentials,
   saveLoggedInEmail,
 } from "@/lib/storage";
-import { AdminAccessDeniedModal } from "@/components/admin-access-denied-modal";
-import { fetchUserProfileByCredentials } from "@/lib/fetchUserProfileByCredentials";
-import { isAdminRole } from "@/lib/isAdminRole";
 import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
 import * as Crypto from "expo-crypto";
@@ -76,9 +76,7 @@ export default function LoginScreen() {
     "success" | "error" | null
   >(null);
   /** Client-side SendGrid only: code + expiry until Edge mode stores hashes in Supabase. */
-  const [pendingResetCode, setPendingResetCode] = useState<string | null>(
-    null,
-  );
+  const [pendingResetCode, setPendingResetCode] = useState<string | null>(null);
   const [pendingResetExpiresAt, setPendingResetExpiresAt] = useState<
     number | null
   >(null);
@@ -109,7 +107,10 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!emailOrPhone || !password) {
-      Alert.alert("Error", "Please fill in all fields");
+      Alert.alert(
+        "Missing Information",
+        "Please enter your email and password to continue.",
+      );
       return;
     }
 
@@ -139,7 +140,7 @@ export default function LoginScreen() {
       if (!userProfile || typeof userProfile.email !== "string") {
         Alert.alert(
           "Login Failed",
-          "Invalid email/phone number or password. Please check your credentials and try again.",
+          "The credentials you entered are incorrect. Please try again.",
         );
         return;
       }
@@ -200,7 +201,10 @@ export default function LoginScreen() {
 
   const handleSendCode = async () => {
     if (!forgotEmail) {
-      Alert.alert("Error", "Please enter your email address");
+      Alert.alert(
+        "Missing Email",
+        "Please enter your email address to continue.",
+      );
       return;
     }
 
@@ -249,11 +253,14 @@ export default function LoginScreen() {
   const handleVerifyCode = async () => {
     const entered = verificationCode.trim();
     if (!entered) {
-      Alert.alert("Error", "Please enter the verification code");
+      Alert.alert(
+        "Missing Verification Code",
+        "Please enter the 6-digit code sent to your email.",
+      );
       return;
     }
     if (entered.length !== 6 || !/^\d{6}$/.test(entered)) {
-      Alert.alert("Error", "Enter the 6-digit code from your email");
+      Alert.alert("Missing Code", "Enter the 6-digit code sent to your email.");
       return;
     }
 
@@ -263,7 +270,7 @@ export default function LoginScreen() {
         const ok = await verifyPasswordResetCode(forgotEmail, entered);
         if (!ok) {
           Alert.alert(
-            "Error",
+            "Verification Failed",
             "Invalid or expired verification code. Request a new code if needed.",
           );
           return;
@@ -271,7 +278,7 @@ export default function LoginScreen() {
       } else {
         if (!pendingResetCode || !pendingResetExpiresAt) {
           Alert.alert(
-            "Error",
+            "No Code Requested",
             "Please request a verification code first using Send Code.",
           );
           return;
@@ -280,13 +287,16 @@ export default function LoginScreen() {
           setPendingResetCode(null);
           setPendingResetExpiresAt(null);
           Alert.alert(
-            "Error",
-            "This code has expired (10 minutes). Tap Resend code to get a new one.",
+            "Code Expired",
+            "This code has expired (10 minutes). Tap Resend Code to get a new one.",
           );
           return;
         }
         if (entered !== pendingResetCode) {
-          Alert.alert("Error", "That code does not match. Check your email.");
+          Alert.alert(
+            "Verification Failed",
+            "That code does not match. Check your email.",
+          );
           return;
         }
       }
@@ -294,8 +304,8 @@ export default function LoginScreen() {
       setForgotStep(3);
     } catch (error: any) {
       Alert.alert(
-        "Error",
-        error.message || "Could not verify the code. Try again.",
+        "Verification Failed",
+        error.message || "Could not verify the code. Please try again.",
       );
     } finally {
       setLoading(false);
@@ -303,13 +313,27 @@ export default function LoginScreen() {
   };
 
   const handleResetPassword = async () => {
-    if (!newPassword || !confirmPassword) {
-      Alert.alert("Error", "Please fill in all fields");
+    if (!newPassword && !confirmPassword) {
+      Alert.alert(
+        "Missing Fields",
+        "Please enter your new password and confirm it.",
+      );
+      return;
+    }
+    if (!newPassword) {
+      Alert.alert("Missing Password", "Please enter your new password.");
+      return;
+    }
+    if (!confirmPassword) {
+      Alert.alert("Missing Confirmation", "Please confirm your new password.");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match");
+      Alert.alert(
+        "Passwords Don't Match",
+        "Your passwords do not match. Please re-enter and make sure both fields are identical.",
+      );
       return;
     }
 
@@ -328,10 +352,7 @@ export default function LoginScreen() {
       if (updateError) throw updateError;
 
       if (isPasswordResetEdgeEnabled()) {
-        await invalidatePasswordResetCode(
-          forgotEmail,
-          verificationCode.trim(),
-        );
+        await invalidatePasswordResetCode(forgotEmail, verificationCode.trim());
       } else {
         setPendingResetCode(null);
         setPendingResetExpiresAt(null);
@@ -339,7 +360,7 @@ export default function LoginScreen() {
 
       Alert.alert(
         "Success",
-        "Password has been reset. You can now log in with your new password.",
+        "Your password has been reset successfully. You can now log in with your new password.",
         [
           {
             text: "OK",
