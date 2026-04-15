@@ -140,7 +140,7 @@ export default function LoginScreen() {
       if (!userProfile || typeof userProfile.email !== "string") {
         Alert.alert(
           "Login Failed",
-          "The credentials you entered are incorrect. Please try again.",
+          "Incorrect email or password. Please try again..",
         );
         return;
       }

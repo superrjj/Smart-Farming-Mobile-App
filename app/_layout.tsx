@@ -13,6 +13,7 @@ import {
 } from '@expo-google-fonts/poppins';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { AlertOverrideProvider } from '@/components/alert-override-provider';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -41,13 +42,15 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="UserManagement" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="dark" backgroundColor="#ffffff" />
-    </ThemeProvider>
+    <AlertOverrideProvider>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="UserManagement" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        </Stack>
+        <StatusBar style="dark" backgroundColor="#ffffff" />
+      </ThemeProvider>
+    </AlertOverrideProvider>
   );
 }

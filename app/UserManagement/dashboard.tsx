@@ -2054,6 +2054,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#374151",
     lineHeight: 20,
+    textAlign: "justify",
   },
   popupOkButton: {
     marginTop: 16,
