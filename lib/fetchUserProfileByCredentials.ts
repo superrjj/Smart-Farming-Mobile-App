@@ -1,16 +1,13 @@
 import { supabase } from "@/lib/supabase";
 import type { PostgrestError } from "@supabase/supabase-js";
 
-/**
- * Loads user_profiles by email OR phone + password hash.
- * Uses two separate queries instead of `.or(...)` so values with `@` / special
- * characters are never broken by PostgREST filter parsing (a common login bug).
- * Works for any role (e.g. Farmer, Admin) — no role-based blocking here.
- */
 export async function fetchUserProfileByCredentials(
   trimmedInput: string,
   hashedPassword: string,
-): Promise<{ profile: Record<string, unknown> | null; error: PostgrestError | null }> {
+): Promise<{
+  profile: Record<string, unknown> | null;
+  error: PostgrestError | null;
+}> {
   const emailResult = await supabase
     .from("user_profiles")
     .select("*")
@@ -22,7 +19,10 @@ export async function fetchUserProfileByCredentials(
     return { profile: null, error: emailResult.error };
   }
   if (emailResult.data) {
-    return { profile: emailResult.data as Record<string, unknown>, error: null };
+    return {
+      profile: emailResult.data as Record<string, unknown>,
+      error: null,
+    };
   }
 
   const phoneResult = await supabase
@@ -36,7 +36,10 @@ export async function fetchUserProfileByCredentials(
     return { profile: null, error: phoneResult.error };
   }
   if (phoneResult.data) {
-    return { profile: phoneResult.data as Record<string, unknown>, error: null };
+    return {
+      profile: phoneResult.data as Record<string, unknown>,
+      error: null,
+    };
   }
 
   return { profile: null, error: null };

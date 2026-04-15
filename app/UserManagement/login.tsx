@@ -661,6 +661,11 @@ export default function LoginScreen() {
                       keyboardType="numeric"
                       maxLength={6}
                       textAlign="center"
+                      selection={
+                        verificationCode.length === 0
+                          ? { start: 0, end: 0 }
+                          : undefined
+                      }
                     />
                   </View>
                   <TouchableOpacity

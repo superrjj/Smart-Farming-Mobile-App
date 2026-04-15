@@ -1,6 +1,7 @@
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AdminAccessDeniedModal } from '@/components/admin-access-denied-modal';
 import { supabase } from '@/lib/supabase';
 import { isAdminRole } from '@/lib/isAdminRole';
 import { clearAllStorage, getLoggedInEmail } from '@/lib/storage';
@@ -11,6 +12,7 @@ export default function UserManagementLayout() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [popup, setPopup] = useState<RecoPopup>(null);
+  const [adminDeniedVisible, setAdminDeniedVisible] = useState(false);
   const appStateRef = useRef(AppState.currentState);
 
   useEffect(() => {
@@ -98,15 +100,13 @@ export default function UserManagementLayout() {
         async (payload) => {
           const row = payload.new as { role?: unknown };
           if (!isAdminRole(row.role)) return;
+          setAdminDeniedVisible(true);
           try {
             await clearAllStorage();
           } catch {
             // ignore storage failures; still redirect
           }
-          router.replace({
-            pathname: '/UserManagement/login',
-            params: { blocked: 'admin' },
-          });
+          router.replace('/UserManagement/login');
         },
       )
       .subscribe();
@@ -179,6 +179,11 @@ export default function UserManagementLayout() {
           </View>
         </View>
       </Modal>
+
+      <AdminAccessDeniedModal
+        visible={adminDeniedVisible}
+        onDismiss={() => setAdminDeniedVisible(false)}
+      />
     </>
   );
 }
