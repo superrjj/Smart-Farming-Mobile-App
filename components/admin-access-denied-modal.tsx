@@ -36,15 +36,15 @@ export function AdminAccessDeniedModal({ visible, onDismiss }: Props) {
           <View style={styles.iconCircle}>
             <FontAwesome name="lock" size={24} color="#B45309" />
           </View>
-          <Text style={styles.title}>Mobile access not available</Text>
+          <Text style={styles.title}>Mobile Access Restricted</Text>
           <Text style={styles.body}>
-            Administrator accounts cannot sign in to the AgriHydra mobile app.
-            Please use the web dashboard in your browser to manage users, roles,
-            and system settings.
+            Administrator accounts are not supported on the AgriHydra mobile
+            app. To manage users, roles, and system settings, please sign in
+            through the web dashboard on your browser.
           </Text>
           <Text style={styles.footerNote}>
-            Farmer accounts continue to use this app for field monitoring and
-            irrigation.
+            This app is intended for farmer accounts to monitor fields and
+            manage irrigation.
           </Text>
           <TouchableOpacity
             style={styles.primaryButton}
