@@ -1,19 +1,29 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import {
+  Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import {
   isPasswordResetEdgeEnabled,
   sendPasswordResetCode,
-} from '../../lib/sendgrid';
+} from "../../lib/sendgrid";
 
 export default function ResetPasswordScreen() {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleResetPassword = async () => {
     if (!email) {
-      Alert.alert('Error', 'Please enter your email address');
+      Alert.alert(
+        "Email Required",
+        "Please enter your email address to continue.",
+      );
       return;
     }
 
@@ -26,12 +36,15 @@ export default function ResetPasswordScreen() {
         await sendPasswordResetCode(email, code);
       }
       Alert.alert(
-        'Success',
-        'Password reset code has been sent to your email',
-        [{ text: 'OK', onPress: () => router.back() }]
+        "Success",
+        "Password reset code has been sent to your email",
+        [{ text: "OK", onPress: () => router.back() }],
       );
     } catch {
-      Alert.alert('Error', 'Failed to send password reset email');
+      Alert.alert(
+        "Password Reset Failed",
+        "Unable to send the password reset email. Please check your email address and try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -40,8 +53,10 @@ export default function ResetPasswordScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Reset Password</Text>
-      <Text style={styles.subtitle}>Enter your email address to receive a password reset link</Text>
-      
+      <Text style={styles.subtitle}>
+        Enter your email address to receive a password reset link
+      </Text>
+
       <TextInput
         style={styles.input}
         placeholder="Email address"
@@ -57,14 +72,11 @@ export default function ResetPasswordScreen() {
         disabled={loading}
       >
         <Text style={styles.buttonText}>
-          {loading ? 'Sending...' : 'Send Reset Link'}
+          {loading ? "Sending..." : "Send Reset Link"}
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => router.back()}
-      >
+      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
         <Text style={styles.backButtonText}>Back to Login</Text>
       </TouchableOpacity>
     </View>
@@ -75,52 +87,52 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    justifyContent: 'center',
-    backgroundColor: '#f5f5f5',
+    justifyContent: "center",
+    backgroundColor: "#f5f5f5",
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: "bold",
+    textAlign: "center",
     marginBottom: 10,
-    color: '#333',
+    color: "#333",
   },
   subtitle: {
     fontSize: 16,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 30,
-    color: '#666',
+    color: "#666",
     lineHeight: 22,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: "#ddd",
     borderRadius: 8,
     padding: 15,
     marginBottom: 20,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     fontSize: 16,
   },
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: "#007AFF",
     padding: 15,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 15,
   },
   buttonDisabled: {
-    backgroundColor: '#ccc',
+    backgroundColor: "#ccc",
   },
   buttonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   backButton: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   backButtonText: {
-    color: '#007AFF',
+    color: "#007AFF",
     fontSize: 16,
   },
 });

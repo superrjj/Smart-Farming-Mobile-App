@@ -1,6 +1,6 @@
-import { FontAwesome } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { FontAwesome } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,28 +11,27 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Picker } from '@react-native-picker/picker';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { supabase } from '@/lib/supabase';
+import { supabase } from "@/lib/supabase";
 
 const colors = {
-  brandGreen: '#22C55E',
-  brandBlue: '#3B82F6',
-  brandGrayText: '#6B7280',
-  brandGrayBorder: '#E5E7EB',
-  cardBg: '#F9FAFB',
-  orange: '#F97316',
-  purple: '#A855F7',
-  red: '#EF4444',
+  brandGreen: "#22C55E",
+  brandBlue: "#3B82F6",
+  brandGrayText: "#6B7280",
+  brandGrayBorder: "#E5E7EB",
+  cardBg: "#F9FAFB",
+  orange: "#F97316",
+  purple: "#A855F7",
+  red: "#EF4444",
 };
 
 const fonts = {
-  regular: 'Poppins_400Regular',
-  medium: 'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold: 'Poppins_700Bold',
+  regular: "Poppins_400Regular",
+  medium: "Poppins_500Medium",
+  semibold: "Poppins_600SemiBold",
+  bold: "Poppins_700Bold",
 };
 
 interface SensorDevice {
@@ -47,15 +46,15 @@ interface SensorDevice {
 
 export default function SensorDeviceScreen() {
   const params = useLocalSearchParams<{ email?: string }>();
-  const email = typeof params.email === 'string' ? params.email : '';
+  const email = typeof params.email === "string" ? params.email : "";
   const router = useRouter();
 
   const [devices, setDevices] = useState<SensorDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [newDevice, setNewDevice] = useState({
-    sensor_type: '',
-    serial_number: '',
+    sensor_type: "",
+    serial_number: "",
   });
   const [saving, setSaving] = useState(false);
   const [farmId, setFarmId] = useState<string | null>(null);
@@ -67,63 +66,78 @@ export default function SensorDeviceScreen() {
   const fetchFarmAndDevices = async () => {
     try {
       // STEP 1: Get user's UUID from user_profiles
-      console.log('Fetching user profile for email:', email);
+      console.log("Fetching user profile for email:", email);
       const { data: userData, error: userError } = await supabase
-        .from('user_profiles')
-        .select('id')
-        .eq('email', email)
+        .from("user_profiles")
+        .select("id")
+        .eq("email", email)
         .single();
 
       if (userError || !userData) {
-        console.error('Error fetching user:', userError);
-        Alert.alert('Error', 'User profile not found. Please complete your profile first.');
+        console.error("Error fetching user:", userError);
+        Alert.alert(
+          "Profile Incomplete",
+          "Your profile could not be found. Please complete your profile before proceeding.",
+        );
         setLoading(false);
         return;
       }
 
-      console.log('Found user_id:', userData.id);
+      console.log("Found user_id:", userData.id);
 
       // STEP 2: Get farm using owner_id (same as user_profiles.id)
       const { data: farmData, error: farmError } = await supabase
-        .from('farm')
-        .select('id')
-        .eq('owner_id', userData.id)
+        .from("farm")
+        .select("id")
+        .eq("owner_id", userData.id)
         .maybeSingle();
 
       if (farmError) {
-        console.error('Error fetching farm:', farmError);
-        Alert.alert('Error', 'Failed to fetch farm information');
+        console.error("Error fetching farm:", farmError);
+        Alert.alert(
+          "Farm Load Failed",
+          "Unable to load your farm information. Please check your connection and try again.",
+        );
         setLoading(false);
         return;
       }
 
       if (!farmData?.id) {
-        Alert.alert('No Farm Found', 'Please set up your farm information in the profile section first.');
+        Alert.alert(
+          "Farm Not Set Up",
+          "You haven't set up your farm yet. Please complete your farm information in your profile before proceeding.",
+        );
         setLoading(false);
         return;
       }
 
-      console.log('Found farm_id:', farmData.id);
+      console.log("Found farm_id:", farmData.id);
       setFarmId(farmData.id);
 
       // STEP 3: Fetch devices for this farm
       const { data: devicesData, error: devicesError } = await supabase
-        .from('sensor_device')
-        .select('*')
-        .eq('farm_id', farmData.id)
-        .order('installation_date', { ascending: false });
+        .from("sensor_device")
+        .select("*")
+        .eq("farm_id", farmData.id)
+        .order("installation_date", { ascending: false });
 
       if (devicesError) {
-        console.error('Error fetching devices:', devicesError);
-        Alert.alert('Error', 'Failed to fetch sensor devices');
+        console.error("Error fetching devices:", devicesError);
+        Alert.alert(
+          "Sensor Load Failedr",
+          "Unable to load your sensor devices. Please check your connection and try again.",
+        );
         return;
       }
 
-      console.log('Found devices:', devicesData?.length || 0);
+      console.log("Found devices:", devicesData?.length || 0);
       setDevices(devicesData || []);
     } catch (error) {
-      console.error('Error fetching data:', error);
-      Alert.alert('Error', 'Failed to fetch data');
+      console.error("Error fetching data:", error);
+      Alert.alert(
+        "Data Load Failed",
+        "Unable to load the requested data. Please check your connection and try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -131,48 +145,63 @@ export default function SensorDeviceScreen() {
 
   const handleAddDevice = async () => {
     if (!farmId) {
-      Alert.alert('Error', 'Farm information not found. Please set up your farm in the profile section first.');
+      Alert.alert(
+        "Farm Not Set Up",
+        "You haven't set up your farm yet. Please complete your farm information in your profile before proceeding.",
+      );
       return;
     }
 
     if (!newDevice.sensor_type.trim()) {
-      Alert.alert('Error', 'Please enter sensor type');
+      Alert.alert(
+        "Sensor Type Required",
+        "Please enter the sensor type to continue.",
+      );
       return;
     }
 
     if (!newDevice.serial_number.trim()) {
-      Alert.alert('Error', 'Please enter serial number');
+      Alert.alert(
+        "Serial Number Required",
+        "Please enter the serial number to continue.",
+      );
       return;
     }
 
     setSaving(true);
     try {
       const { data, error } = await supabase
-        .from('sensor_device')
+        .from("sensor_device")
         .insert({
           farm_id: farmId,
           sensor_type: newDevice.sensor_type.trim(),
           serial_number: newDevice.serial_number.trim(),
-          installation_date: new Date().toISOString().split('T')[0],
-          last_calibration_date: new Date().toISOString().split('T')[0],
+          installation_date: new Date().toISOString().split("T")[0],
+          last_calibration_date: new Date().toISOString().split("T")[0],
           status: true,
         })
         .select()
         .single();
 
       if (error) {
-        console.error('Error adding device:', error);
-        Alert.alert('Error', 'Failed to add device');
+        console.error("Error adding device:", error);
+        Alert.alert(
+          "Device Add Failed",
+          "Unable to add the device. Please try again or contact support if the issue persists.",
+        );
         return;
       }
 
       setDevices([data, ...devices]);
-      setNewDevice({ sensor_type: '', serial_number: '' });
+      setNewDevice({ sensor_type: "", serial_number: "" });
       setModalVisible(false);
-      Alert.alert('Success', 'Device added successfully');
+      Alert.alert("Device Added", "The device has been added successfully.");
     } catch (error) {
-      console.error('Error adding device:', error);
-      Alert.alert('Error', 'Failed to add device');
+      console.error("Error adding device:", error);
+      Alert.alert(
+        "Device Add Failed",
+        "Unable to add the device. Please try again or contact support if the issue persists.",
+      );
     } finally {
       setSaving(false);
     }
@@ -181,22 +210,31 @@ export default function SensorDeviceScreen() {
   const handleDeleteDevice = async (deviceId: string) => {
     try {
       const { error } = await supabase
-        .from('sensor_device')
+        .from("sensor_device")
         .delete()
-        .eq('id', deviceId);
+        .eq("id", deviceId);
 
       if (error) {
-        console.error('Error deleting device:', error);
-        Alert.alert('Error', 'Failed to delete device');
+        console.error("Error deleting device:", error);
+        Alert.alert(
+          "Device Deletion Failed",
+          "Unable to delete the device. Please try again or contact support if the issue persists.",
+        );
         return;
       }
 
       // Remove the device from the local state
-      setDevices(devices.filter(device => device.id !== deviceId));
-      Alert.alert('Success', 'Device deleted successfully');
+      setDevices(devices.filter((device) => device.id !== deviceId));
+      Alert.alert(
+        "Device Deleted",
+        "The device has been deleted successfully.",
+      );
     } catch (error) {
-      console.error('Error deleting device:', error);
-      Alert.alert('Error', 'Failed to delete device');
+      console.error("Error deleting device:", error);
+      Alert.alert(
+        "Device Deletion Failed",
+        "Unable to delete the device. Please try again or contact support if the issue persists.",
+      );
     }
   };
 
@@ -220,7 +258,10 @@ export default function SensorDeviceScreen() {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
             <FontAwesome name="arrow-left" size={20} color="#000" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Sensor Devices</Text>
@@ -235,9 +276,14 @@ export default function SensorDeviceScreen() {
           {/* Info banner if no farm */}
           {!farmId && (
             <View style={styles.infoBanner}>
-              <FontAwesome name="info-circle" size={20} color={colors.brandBlue} />
+              <FontAwesome
+                name="info-circle"
+                size={20}
+                color={colors.brandBlue}
+              />
               <Text style={styles.infoBannerText}>
-                Please set up your farm information in your profile first to add sensor devices.
+                Please set up your farm information in your profile first to add
+                sensor devices.
               </Text>
             </View>
           )}
@@ -256,15 +302,21 @@ export default function SensorDeviceScreen() {
           {/* Devices List */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Registered Devices</Text>
-            
+
             {devices.length === 0 ? (
               <View style={styles.emptyState}>
-                <FontAwesome name="microchip" size={48} color={colors.brandGrayText} />
-                <Text style={styles.emptyStateText}>No devices registered yet</Text>
+                <FontAwesome
+                  name="microchip"
+                  size={48}
+                  color={colors.brandGrayText}
+                />
+                <Text style={styles.emptyStateText}>
+                  No devices registered yet
+                </Text>
                 <Text style={styles.emptyStateSubText}>
-                  {farmId 
-                    ? 'Add your first sensor device to get started'
-                    : 'Set up your farm information first to add devices'}
+                  {farmId
+                    ? "Add your first sensor device to get started"
+                    : "Set up your farm information first to add devices"}
                 </Text>
               </View>
             ) : (
@@ -272,29 +324,58 @@ export default function SensorDeviceScreen() {
                 <View key={device.id} style={styles.deviceItem}>
                   <View style={styles.deviceHeader}>
                     <View style={styles.deviceInfo}>
-                      <Text style={styles.deviceName}>{device.sensor_type}</Text>
-                      <Text style={styles.deviceId}>Serial Number: {device.serial_number}</Text>
+                      <Text style={styles.deviceName}>
+                        {device.sensor_type}
+                      </Text>
+                      <Text style={styles.deviceId}>
+                        Serial Number: {device.serial_number}
+                      </Text>
                     </View>
-                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(device.status) }]}>
-                      <Text style={styles.statusText}>{device.status ? 'ACTIVE' : 'INACTIVE'}</Text>
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        { backgroundColor: getStatusColor(device.status) },
+                      ]}
+                    >
+                      <Text style={styles.statusText}>
+                        {device.status ? "ACTIVE" : "INACTIVE"}
+                      </Text>
                     </View>
                   </View>
-                  
+
                   <View style={styles.deviceDetails}>
                     <View style={styles.detailRow}>
-                      <FontAwesome name="tag" size={14} color={colors.brandGrayText} />
+                      <FontAwesome
+                        name="tag"
+                        size={14}
+                        color={colors.brandGrayText}
+                      />
                       <Text style={styles.detailLabel}>Type:</Text>
-                      <Text style={styles.detailValue}>{device.sensor_type}</Text>
+                      <Text style={styles.detailValue}>
+                        {device.sensor_type}
+                      </Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <FontAwesome name="calendar" size={14} color={colors.brandGrayText} />
+                      <FontAwesome
+                        name="calendar"
+                        size={14}
+                        color={colors.brandGrayText}
+                      />
                       <Text style={styles.detailLabel}>Installed:</Text>
-                      <Text style={styles.detailValue}>{device.installation_date}</Text>
+                      <Text style={styles.detailValue}>
+                        {device.installation_date}
+                      </Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <FontAwesome name="clock-o" size={14} color={colors.brandGrayText} />
+                      <FontAwesome
+                        name="clock-o"
+                        size={14}
+                        color={colors.brandGrayText}
+                      />
                       <Text style={styles.detailLabel}>Last Calibration:</Text>
-                      <Text style={styles.detailValue}>{device.last_calibration_date}</Text>
+                      <Text style={styles.detailValue}>
+                        {device.last_calibration_date}
+                      </Text>
                     </View>
                     <TouchableOpacity
                       style={styles.deleteButton}
@@ -320,13 +401,15 @@ export default function SensorDeviceScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.cardTitle}>Register New Device</Text>
-            
+
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Sensor Type</Text>
               <TextInput
                 style={styles.input}
                 value={newDevice.sensor_type}
-                onChangeText={(text) => setNewDevice({ ...newDevice, sensor_type: text })}
+                onChangeText={(text) =>
+                  setNewDevice({ ...newDevice, sensor_type: text })
+                }
                 placeholder="e.g., Soil Moisture, Temperature, Humidity"
               />
             </View>
@@ -336,7 +419,9 @@ export default function SensorDeviceScreen() {
               <TextInput
                 style={styles.input}
                 value={newDevice.serial_number}
-                onChangeText={(text) => setNewDevice({ ...newDevice, serial_number: text })}
+                onChangeText={(text) =>
+                  setNewDevice({ ...newDevice, serial_number: text })
+                }
                 placeholder="Enter serial number"
               />
             </View>
@@ -346,7 +431,7 @@ export default function SensorDeviceScreen() {
                 style={[styles.button, styles.cancelButton]}
                 onPress={() => {
                   setModalVisible(false);
-                  setNewDevice({ sensor_type: '', serial_number: '' });
+                  setNewDevice({ sensor_type: "", serial_number: "" });
                 }}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -374,15 +459,15 @@ export default function SensorDeviceScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
   },
   container: {
     flex: 1,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingText: {
     marginTop: 12,
@@ -391,12 +476,12 @@ const styles = StyleSheet.create({
     color: colors.brandGrayText,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.brandGrayBorder,
   },
@@ -406,7 +491,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: fonts.semibold,
     fontSize: 18,
-    color: '#000',
+    color: "#000",
   },
   headerRight: {
     width: 28,
@@ -419,27 +504,27 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   infoBanner: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: "#EFF6FF",
     borderRadius: 12,
     padding: 16,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: "#BFDBFE",
   },
   infoBannerText: {
     flex: 1,
     fontFamily: fonts.medium,
     fontSize: 14,
-    color: '#1E40AF',
+    color: "#1E40AF",
     lineHeight: 20,
   },
   addButton: {
     backgroundColor: colors.brandGreen,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
@@ -447,13 +532,13 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontFamily: fonts.semibold,
     fontSize: 16,
-    color: '#fff',
+    color: "#fff",
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
@@ -462,7 +547,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontFamily: fonts.semibold,
     fontSize: 16,
-    color: '#1F2937',
+    color: "#1F2937",
     marginBottom: 16,
   },
   inputGroup: {
@@ -471,7 +556,7 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontFamily: fonts.medium,
     fontSize: 14,
-    color: '#374151',
+    color: "#374151",
     marginBottom: 6,
   },
   input: {
@@ -482,11 +567,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontFamily: fonts.regular,
     fontSize: 15,
-    color: '#1F2937',
-    backgroundColor: '#fff',
+    color: "#1F2937",
+    backgroundColor: "#fff",
   },
   buttonRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     marginTop: 8,
   },
@@ -494,17 +579,17 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   cancelButton: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
     borderWidth: 1,
     borderColor: colors.brandGrayBorder,
   },
   cancelButtonText: {
     fontFamily: fonts.semibold,
     fontSize: 15,
-    color: '#1F2937',
+    color: "#1F2937",
   },
   saveButton: {
     backgroundColor: colors.brandBlue,
@@ -512,16 +597,16 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontFamily: fonts.semibold,
     fontSize: 15,
-    color: '#fff',
+    color: "#fff",
   },
   emptyState: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 32,
   },
   emptyStateText: {
     fontFamily: fonts.semibold,
     fontSize: 16,
-    color: '#1F2937',
+    color: "#1F2937",
     marginTop: 12,
   },
   emptyStateSubText: {
@@ -529,7 +614,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.brandGrayText,
     marginTop: 4,
-    textAlign: 'center',
+    textAlign: "center",
   },
   deviceItem: {
     paddingVertical: 12,
@@ -537,9 +622,9 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.brandGrayBorder,
   },
   deviceHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     marginBottom: 8,
   },
   deviceInfo: {
@@ -548,7 +633,7 @@ const styles = StyleSheet.create({
   deviceName: {
     fontFamily: fonts.semibold,
     fontSize: 15,
-    color: '#1F2937',
+    color: "#1F2937",
   },
   deviceId: {
     fontFamily: fonts.regular,
@@ -564,14 +649,14 @@ const styles = StyleSheet.create({
   statusText: {
     fontFamily: fonts.semibold,
     fontSize: 10,
-    color: '#fff',
+    color: "#fff",
   },
   deviceDetails: {
     gap: 4,
   },
   detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   detailLabel: {
@@ -583,7 +668,7 @@ const styles = StyleSheet.create({
   detailValue: {
     fontFamily: fonts.regular,
     fontSize: 13,
-    color: '#1F2937',
+    color: "#1F2937",
     flex: 1,
   },
   deleteButton: {
@@ -591,28 +676,28 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 4,
     marginTop: 8,
   },
   deleteButtonText: {
     fontFamily: fonts.semibold,
     fontSize: 13,
-    color: '#fff',
+    color: "#fff",
   },
   modalOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 20,
-    width: '90%',
+    width: "90%",
     maxWidth: 340,
   },
 });

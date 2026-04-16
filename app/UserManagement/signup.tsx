@@ -98,7 +98,7 @@ export default function SignupScreen() {
     // Allow letters, spaces, and common name characters like hyphens and apostrophes
     const nameRegex = /^[a-zA-Z\s'-]+$/;
     if (!nameRegex.test(nameText)) {
-      setNameError("Please enter a full name using letters only.");
+      setNameError("Please enter your full name using letters only.");
       return false;
     }
     setNameError(null);
@@ -216,14 +216,17 @@ export default function SignupScreen() {
 
     if (!allRequirementsMet) {
       Alert.alert(
-        "Error",
-        "Please meet all password requirements before signing up",
+        "Password Requirements Not Met",
+        "Please ensure your password meets all requirements before continuing.",
       );
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match");
+      Alert.alert(
+        "Passwords Don't Match",
+        "Your password and confirmation password do not match. Please try again.",
+      );
       return;
     }
 
@@ -232,7 +235,10 @@ export default function SignupScreen() {
     }
 
     if (!phone || !password || !confirmPassword) {
-      Alert.alert("Error", "Please fill in all fields");
+      Alert.alert(
+        "Required Fields Missing",
+        "Please fill in all required fields before continuing.",
+      );
       return;
     }
 

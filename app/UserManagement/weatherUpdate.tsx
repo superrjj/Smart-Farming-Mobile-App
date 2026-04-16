@@ -268,8 +268,8 @@ export default function WeatherUpdateScreen() {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         Alert.alert(
-          "Permission Denied",
-          "Location permission is required to use GPS.",
+          "Location Access Required",
+          "Please allow access to your location in your device settings to use GPS features.",
         );
         setLocating(false);
         return;
@@ -287,8 +287,8 @@ export default function WeatherUpdateScreen() {
 
       if (!inTarlac) {
         Alert.alert(
-          "Outside Tarlac City",
-          "Your location is outside Tarlac City. Showing weather for Tarlac City instead.",
+          "Location Out of Range",
+          "Your current location is outside the supported area. Weather data will be shown for Tarlac City instead.",
           [{ text: "OK" }],
         );
         setLocationName(DEFAULT_LABEL);
@@ -302,8 +302,9 @@ export default function WeatherUpdateScreen() {
       }
     } catch {
       Alert.alert(
-        "Error",
-        "Could not get GPS location. Using default location.",
+        "Location Unavailable",
+        "Your GPS location could not be determined. Defaulting to the nearest available location.",
+        [{ text: "OK" }],
       );
       await loadWeather(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude);
     } finally {

@@ -1919,6 +1919,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.grayText,
   },
+  chartShell: {
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.grayBorder,
+  },
   legendSmall: {
     fontFamily: fonts.regular,
     fontSize: 10,

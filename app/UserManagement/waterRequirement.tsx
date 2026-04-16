@@ -137,11 +137,7 @@ function InputField({
       </View>
       <View style={styles.inputRow}>
         <TextInput
-          style={[
-            styles.input,
-            inputStyle,
-            isOutside && styles.inputWarning,
-          ]}
+          style={[styles.input, inputStyle, isOutside && styles.inputWarning]}
           value={value}
           onChangeText={onChange}
           onBlur={() => setHasBlurred(true)}
@@ -154,7 +150,8 @@ function InputField({
       {description && <Text style={styles.descriptionText}>{description}</Text>}
       {isOutside && (
         <Text style={styles.warningText}>
-          ⚠️ Outside recommended range ({recommended!.min}–{recommended!.max} {unit})
+          ⚠️ Outside recommended range ({recommended!.min}–{recommended!.max}{" "}
+          {unit})
         </Text>
       )}
     </View>
@@ -218,10 +215,7 @@ function RangeInput({
         <View style={styles.rangeInputContainer}>
           <Text style={styles.rangeLabel}>Min</Text>
           <TextInput
-            style={[
-              styles.rangeInput,
-              isMinOutside && styles.inputWarning,
-            ]}
+            style={[styles.rangeInput, isMinOutside && styles.inputWarning]}
             value={minValue}
             onChangeText={onMinChange}
             onBlur={() => setHasBlurredMin(true)}
@@ -242,10 +236,7 @@ function RangeInput({
         <View style={styles.rangeInputContainer}>
           <Text style={styles.rangeLabel}>Max</Text>
           <TextInput
-            style={[
-              styles.rangeInput,
-              isMaxOutside && styles.inputWarning,
-            ]}
+            style={[styles.rangeInput, isMaxOutside && styles.inputWarning]}
             value={maxValue}
             onChangeText={onMaxChange}
             onBlur={() => setHasBlurredMax(true)}
@@ -391,8 +382,8 @@ export default function WaterRequirementScreen() {
           error.message?.includes("Could not find the table")
         ) {
           Alert.alert(
-            "Table Not Found",
-            "The water_requirements table does not exist in the database. Please create it first using the SQL script in DATABASE_SCHEMA.md",
+            "Something Went Wrong",
+            "A configuration error occurred. Please contact support for assistance.",
             [{ text: "OK" }],
           );
         } else {
@@ -401,14 +392,17 @@ export default function WaterRequirementScreen() {
         return;
       }
 
-      Alert.alert("Success", "Water requirements saved successfully!", [
-        { text: "OK", onPress: () => router.back() },
-      ]);
+      Alert.alert(
+        "Water Requirements Saved",
+        "Your water requirements have been saved successfully.",
+        [{ text: "OK", onPress: () => router.back() }],
+      );
     } catch (error: any) {
       console.error("Error saving requirements:", error);
       Alert.alert(
-        "Error",
-        error.message || "Failed to save water requirements",
+        "Water Requirements Save Failed",
+        error.message ||
+          "Unable to save your water requirements. Please try again or contact support if the issue persists. ",
       );
     } finally {
       setSaving(false);
@@ -473,19 +467,31 @@ export default function WaterRequirementScreen() {
 
     // Structural validation — these block saving
     if (soilMoistureMin >= soilMoistureMax) {
-      Alert.alert("Error", "Minimum soil moisture must be less than maximum");
+      Alert.alert(
+        "Invalid Soil Moisture Range",
+        "The minimum soil moisture value must be less than the maximum. Please adjust your values and try again.",
+      );
       return;
     }
     if (temperatureMin >= temperatureMax) {
-      Alert.alert("Error", "Minimum temperature must be less than maximum");
+      Alert.alert(
+        "Invalid Temperature Range",
+        "The minimum temperature value must be less than the maximum. Please adjust your values and try again.",
+      );
       return;
     }
     if (humidityMin >= humidityMax) {
-      Alert.alert("Error", "Minimum humidity must be less than maximum");
+      Alert.alert(
+        "Invalid Humidity Range",
+        "The minimum humidity value must be less than the maximum. Please adjust your values and try again.",
+      );
       return;
     }
     if (!userId) {
-      Alert.alert("Error", "User not found");
+      Alert.alert(
+        "Account Not Found",
+        "We were unable to locate your account. Please contact support for assistance.",
+      );
       return;
     }
 
@@ -516,7 +522,8 @@ export default function WaterRequirementScreen() {
       );
     }
     if (
-      irrigationDuration < STRING_BEANS_RECOMMENDATIONS.irrigationDuration.min ||
+      irrigationDuration <
+        STRING_BEANS_RECOMMENDATIONS.irrigationDuration.min ||
       irrigationDuration > STRING_BEANS_RECOMMENDATIONS.irrigationDuration.max
     ) {
       warnings.push(
@@ -524,7 +531,8 @@ export default function WaterRequirementScreen() {
       );
     }
     if (
-      irrigationFrequency < STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.min ||
+      irrigationFrequency <
+        STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.min ||
       irrigationFrequency > STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.max
     ) {
       warnings.push(
@@ -541,14 +549,32 @@ export default function WaterRequirementScreen() {
           {
             text: "Save Anyway",
             onPress: () =>
-              performSave({ soilMoistureMin, soilMoistureMax, temperatureMin, temperatureMax, humidityMin, humidityMax, irrigationDuration, irrigationFrequency }),
+              performSave({
+                soilMoistureMin,
+                soilMoistureMax,
+                temperatureMin,
+                temperatureMax,
+                humidityMin,
+                humidityMax,
+                irrigationDuration,
+                irrigationFrequency,
+              }),
           },
         ],
       );
       return;
     }
 
-    await performSave({ soilMoistureMin, soilMoistureMax, temperatureMin, temperatureMax, humidityMin, humidityMax, irrigationDuration, irrigationFrequency });
+    await performSave({
+      soilMoistureMin,
+      soilMoistureMax,
+      temperatureMin,
+      temperatureMax,
+      humidityMin,
+      humidityMax,
+      irrigationDuration,
+      irrigationFrequency,
+    });
   };
 
   const handleResetToRecommended = () => {
