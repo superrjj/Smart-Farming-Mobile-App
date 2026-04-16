@@ -53,6 +53,8 @@ export default function SignupScreen() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Password requirements validation
   const getPasswordRequirements = (pwd: string) => {
@@ -418,16 +420,28 @@ export default function SignupScreen() {
                     <TextInput
                       placeholder="Password"
                       placeholderTextColor={colors.brandGrayText}
-                      secureTextEntry
+                      secureTextEntry={!showPassword}
                       value={password}
                       onChangeText={setPassword}
                       editable={!loading}
                       style={styles.input}
                     />
+                    <TouchableOpacity
+                      style={styles.togglePasswordButton}
+                      activeOpacity={0.7}
+                      onPress={() => setShowPassword((prev) => !prev)}
+                      disabled={loading}
+                    >
+                      <FontAwesome
+                        name={showPassword ? "eye-slash" : "eye"}
+                        size={18}
+                        color={colors.brandGrayText}
+                      />
+                    </TouchableOpacity>
                   </View>
 
                   {/* Password Requirements */}
-                  {password.length > 0 && (
+                  {password.length > 0 && !allPasswordRequirementsMet && (
                     <View style={styles.passwordRequirements}>
                       <Text style={styles.requirementsTitle}>
                         Password must:
@@ -541,12 +555,24 @@ export default function SignupScreen() {
                     <TextInput
                       placeholder="Confirm password"
                       placeholderTextColor={colors.brandGrayText}
-                      secureTextEntry
+                      secureTextEntry={!showConfirmPassword}
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
                       editable={!loading}
                       style={styles.input}
                     />
+                    <TouchableOpacity
+                      style={styles.togglePasswordButton}
+                      activeOpacity={0.7}
+                      onPress={() => setShowConfirmPassword((prev) => !prev)}
+                      disabled={loading}
+                    >
+                      <FontAwesome
+                        name={showConfirmPassword ? "eye-slash" : "eye"}
+                        size={18}
+                        color={colors.brandGrayText}
+                      />
+                    </TouchableOpacity>
                   </View>
 
                   <TouchableOpacity
@@ -571,7 +597,7 @@ export default function SignupScreen() {
                     </Text>
                     <Link href="/UserManagement/login" asChild>
                       <TouchableOpacity activeOpacity={0.7}>
-                        <Text style={styles.inlineFooterLink}>LOGIN</Text>
+                        <Text style={styles.inlineFooterLink}>Sign In</Text>
                       </TouchableOpacity>
                     </Link>
                   </View>
@@ -665,7 +691,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     justifyContent: "center",
     alignItems: "center",
-    minHeight: 45,
+    minHeight: 50,
     shadowColor: colors.brandGreen,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -677,7 +703,7 @@ const styles = StyleSheet.create({
   },
   signupButtonText: {
     fontFamily: fonts.semibold,
-    fontSize: 12,
+    fontSize: 13,
     color: "#fff",
     textAlign: "center",
   },
@@ -690,12 +716,12 @@ const styles = StyleSheet.create({
   },
   inlineFooterText: {
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.brandGrayText,
   },
   inlineFooterLink: {
     fontFamily: fonts.medium,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.brandBlue,
   },
   passwordRequirements: {

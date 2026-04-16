@@ -32,13 +32,13 @@ import { clearAllStorage } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 import { getWeatherData } from "../../lib/weatherConfig";
 
-// ── Config ─────────────────────────────────────────────────────────────────
+// App settings
 const DEFAULT_COORDS = { latitude: 15.53, longitude: 120.6042 };
 
-/** Local UI preference only; does not command hardware or sync to the server. */
+/** Saved UI toggle only. It does not control hardware or sync to backend. */
 const AUTO_IRRIGATION_MODE_KEY = "dashboard_auto_irrigation_mode";
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// Helper functions
 function formatPHTime(isoString: string): string {
   return new Intl.DateTimeFormat("en-PH", {
     timeZone: "Asia/Manila",
@@ -133,7 +133,7 @@ function getHumiditySeverity(value: number): string {
   return "Severe";
 }
 
-// ── Design tokens ───────────────────────────────────────────────────────────
+// Shared colors and fonts
 const colors = {
   brandGreen: "#3E9B4F",
   brandBlue: "#007AFF",
@@ -178,7 +178,7 @@ const ANALYTICS_SUB_ITEMS = [
 
 const DRAWER_WIDTH = Math.min(320, Dimensions.get("window").width * 0.8);
 
-// ── Circular Gauge ──────────────────────────────────────────────────────────
+// Circular gauge component
 interface GaugeProps {
   value: number;
   maxValue: number;
@@ -296,7 +296,7 @@ const gaugeStyles = StyleSheet.create({
   },
 });
 
-// ── Forecast Mini Card ──────────────────────────────────────────────────────
+// Small weather forecast card
 const ForecastMiniCard = ({
   day,
   date,
@@ -390,7 +390,7 @@ const fStyles = StyleSheet.create({
   },
 });
 
-// ── Main Screen ─────────────────────────────────────────────────────────────
+// Main dashboard screen
 export default function DashboardScreen() {
   const params = useLocalSearchParams<{ email?: string }>();
   const email = typeof params.email === "string" ? params.email : "";
@@ -415,15 +415,19 @@ export default function DashboardScreen() {
   >([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [selectedRecommendation, setSelectedRecommendation] = useState<{
+    id?: number;
     title: string;
     message: string;
   } | null>(null);
+  const [autoOpenedRecommendationId, setAutoOpenedRecommendationId] = useState<
+    number | null
+  >(null);
 
-  // ── Forecast state ──
+  // Forecast data state
   const [forecastData, setForecastData] = useState<any>(null);
   const [forecastLoading, setForecastLoading] = useState(true);
 
-  // ── Fetch sensor data ──
+  // Load latest sensor values
   useEffect(() => {
     const fetchSensorData = async () => {
       try {
@@ -437,7 +441,7 @@ export default function DashboardScreen() {
 
         if (soilData) {
           const raw = Number(soilData.value);
-          // Match admin conversion: higher raw = drier (inverted ADC scale)
+          // Use same conversion for soil moisture.
           const percent = Math.round(((700 - raw) / 700) * 100);
           const clamped = Math.min(100, Math.max(0, percent));
           setSoilMoisturePercent(clamped);
@@ -482,7 +486,7 @@ export default function DashboardScreen() {
     fetchSensorData();
   }, []);
 
-  // ── Fetch 7-day forecast ──
+  // Load 7-day weather forecast
   useEffect(() => {
     getWeatherData(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude)
       .then(setForecastData)
@@ -769,6 +773,24 @@ export default function DashboardScreen() {
     };
   }, [userId]);
 
+  useEffect(() => {
+    if (!userId) return;
+    if (selectedRecommendation) return;
+
+    const firstUnread = notifications.find(
+      (n) => n.is_read === false || n.is_read === null,
+    );
+    if (!firstUnread) return;
+    if (autoOpenedRecommendationId === firstUnread.id) return;
+
+    setAutoOpenedRecommendationId(firstUnread.id);
+    setSelectedRecommendation({
+      id: firstUnread.id,
+      title: firstUnread.title,
+      message: firstUnread.message,
+    });
+  }, [userId, notifications, selectedRecommendation, autoOpenedRecommendationId]);
+
   const markAllAsRead = useCallback(async () => {
     if (!userId) return;
     try {
@@ -889,9 +911,8 @@ export default function DashboardScreen() {
     }
   };
 
-  // ── Irrigation status ──
-  // FIX: use strict boundaries — <=40 Wet threshold raised to avoid
-  // "Standby — Wet" triggering too early at mid-range values.
+  // Irrigation status shown in top chips
+  // Keep strict ranges so "Standby" and wet/dry labels are shown correctly.
   const irrigStatus = sensorLoading
     ? null
     : soilMoisturePercent <= 25
@@ -922,7 +943,7 @@ export default function DashboardScreen() {
               icon: "tint" as const,
             };
 
-  // ── Build 7-day forecast items ──
+  // Build display-ready 7-day forecast cards
   const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const today = new Date();
   const dailyForecast = forecastData
@@ -951,7 +972,7 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* Top App Bar */}
+        {/* Header bar */}
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => setMenuOpen(true)}>
             <FontAwesome name="bars" size={22} color="#000" />
@@ -976,7 +997,7 @@ export default function DashboardScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* ── System Status Hero ── */}
+          {/* System status section */}
           <View style={styles.heroBanner}>
             <View style={styles.heroLeft}>
               {loadingName ? (
@@ -1032,7 +1053,7 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {/* Status chips */}
+          {/* Quick status chips */}
           <View style={styles.heroChipsRow}>
             {sensorLoading || !irrigStatus ? (
               <View style={[styles.heroChip, styles.heroChipSkeleton]}>
@@ -1073,7 +1094,7 @@ export default function DashboardScreen() {
             )}
           </View>
 
-          {/* ── Field Conditions Card ── */}
+          {/* Field conditions card */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Field Conditions</Text>
             {sensorLoading ? (
@@ -1171,7 +1192,7 @@ export default function DashboardScreen() {
             )}
           </View>
 
-          {/* ── 7-Day Forecast Card ── */}
+          {/* 7-day forecast card */}
           <View style={styles.card}>
             <View style={styles.forecastCardHeader}>
               <FontAwesome
@@ -1232,7 +1253,7 @@ export default function DashboardScreen() {
           </View>
         </ScrollView>
 
-        {/* ── Notification Panel ── */}
+        {/* Notification panel */}
         <Modal
           visible={notifOpen}
           transparent
@@ -1302,7 +1323,7 @@ export default function DashboardScreen() {
           </View>
         </Modal>
 
-        {/* ── Recommendation Detail Popup ── */}
+        {/* Recommendation detail popup */}
         <Modal
           visible={!!selectedRecommendation}
           transparent
@@ -1319,7 +1340,13 @@ export default function DashboardScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.popupOkButton}
-                onPress={() => setSelectedRecommendation(null)}
+                onPress={async () => {
+                  const recId = selectedRecommendation?.id;
+                  setSelectedRecommendation(null);
+                  if (recId != null) {
+                    await markNotificationAsRead(recId);
+                  }
+                }}
               >
                 <Text style={styles.popupOkButtonText}>OK</Text>
               </TouchableOpacity>
@@ -1327,7 +1354,7 @@ export default function DashboardScreen() {
           </View>
         </Modal>
 
-        {/* ── Automatic irrigation confirm ── */}
+        {/* Automatic irrigation confirmation popup */}
         <Modal
           visible={autoIrrigationConfirmOpen}
           transparent
@@ -1404,7 +1431,7 @@ export default function DashboardScreen() {
           />
         )}
 
-        {/* ── Drawer ── */}
+        {/* Side menu drawer */}
         <Animated.View
           style={[styles.drawer, { transform: [{ translateX: drawerX }] }]}
         >
@@ -1466,7 +1493,7 @@ export default function DashboardScreen() {
                     style={styles.subMenuItem}
                     activeOpacity={0.8}
                     onPress={() => {
-                      // FIX: close analytics dropdown and drawer before navigating
+                      // Close the dropdown and drawer before opening next screen.
                       setAnalyticsOpen(false);
                       setMenuOpen(false);
                       if (sub.key === "env") {
@@ -1550,7 +1577,7 @@ export default function DashboardScreen() {
   );
 }
 
-// ── Styles ──────────────────────────────────────────────────────────────────
+// Styles
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1575,7 +1602,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  // ── Hero Banner ──
+  // Hero section
   heroBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -1648,7 +1675,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
 
-  // Status chips
+  // Top status chips
   heroChipsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1718,7 +1745,7 @@ const styles = StyleSheet.create({
     height: 11,
   },
 
-  // ── Cards ──
+  // Shared cards
   card: {
     backgroundColor: "#fff",
     borderRadius: 16,
@@ -1776,7 +1803,7 @@ const styles = StyleSheet.create({
     height: 11,
   },
 
-  // ── Forecast card ──
+  // Forecast card
   forecastCardHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -1840,7 +1867,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
-  // ── Drawer ──
+  // Drawer
   userHeader: {
     alignItems: "center",
     paddingVertical: 20,
@@ -1982,7 +2009,7 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
 
-  // ── Bell ──
+  // Notification bell
   bellButton: { padding: 6, position: "relative" },
   bellBadgeCount: {
     position: "absolute",
@@ -2076,7 +2103,7 @@ const styles = StyleSheet.create({
     color: colors.brandGrayText,
   },
 
-  // ── Popup ──
+  // Popup styles
   popupBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",

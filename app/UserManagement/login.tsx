@@ -530,9 +530,7 @@ export default function LoginScreen() {
                     </Text>
                     <Link href="/UserManagement/signup" asChild>
                       <TouchableOpacity activeOpacity={0.7}>
-                        <Text style={styles.inlineFooterLink}>
-                          Create Account
-                        </Text>
+                        <Text style={styles.inlineFooterLink}>Sign Up</Text>
                       </TouchableOpacity>
                     </Link>
                   </View>
