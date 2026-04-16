@@ -39,8 +39,8 @@ export function AdminAccessDeniedModal({ visible, onDismiss }: Props) {
           <Text style={styles.title}>Mobile access not available</Text>
           <Text style={styles.body}>
             Administrator accounts cannot sign in to the AgriHydra mobile app.
-            Please use the web dashboard in your browser to manage users,
-            roles, and system settings.
+            Please use the web dashboard in your browser to manage users, roles,
+            and system settings.
           </Text>
           <Text style={styles.footerNote}>
             Farmer accounts continue to use this app for field monitoring and
