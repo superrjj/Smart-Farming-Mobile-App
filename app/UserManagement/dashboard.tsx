@@ -85,7 +85,11 @@ function getWeatherDescription(code: number): string {
   return "Cloudy";
 }
 
-function formatScheduleDateOnly(day: number, month: number, year: number): string {
+function formatScheduleDateOnly(
+  day: number,
+  month: number,
+  year: number,
+): string {
   const mm = String(month).padStart(2, "0");
   const dd = String(day).padStart(2, "0");
   return `${mm}/${dd}/${year}`;
@@ -565,9 +569,7 @@ export default function DashboardScreen() {
         .eq("is_active", true)
         .limit(10);
 
-      const scheduleIds = [
-        ...(userSchedules ?? []).map((s) => String(s.id)),
-      ];
+      const scheduleIds = [...(userSchedules ?? []).map((s) => String(s.id))];
 
       if (scheduleIds.length === 0) {
         const { data: userSchedulesAny } = await supabase
@@ -589,7 +591,9 @@ export default function DashboardScreen() {
 
       const { data: scheduleRows } = await supabase
         .from("irrigation_scheduled_dates")
-        .select("schedule_id, time, scheduled_date, day, month, year, approval_status")
+        .select(
+          "schedule_id, time, scheduled_date, day, month, year, approval_status",
+        )
         .in("schedule_id", scheduleIds)
         .gte("scheduled_date", todayYmd)
         .order("scheduled_date", { ascending: true })
@@ -606,7 +610,9 @@ export default function DashboardScreen() {
         .find((r) => {
           const dateValue =
             String(r.scheduled_date ?? "") ||
-            toYmdLocal(new Date(Number(r.year), Number(r.month) - 1, Number(r.day)));
+            toYmdLocal(
+              new Date(Number(r.year), Number(r.month) - 1, Number(r.day)),
+            );
           if (dateValue > todayYmd) return true;
           if (dateValue < todayYmd) return false;
           return timeToMinutes(String(r.time)) > currentMinutes;
@@ -776,7 +782,10 @@ export default function DashboardScreen() {
       await fetchNotifications();
     } catch (error) {
       console.error("Error marking notifications as read:", error);
-      Alert.alert("Error", "Failed to mark notifications as read.");
+      Alert.alert(
+        "Notifications Update Failed",
+        "Unable to mark notifications as read. Please try again.",
+      );
     }
   }, [fetchNotifications, userId]);
 
@@ -793,7 +802,10 @@ export default function DashboardScreen() {
         await fetchNotifications();
       } catch (error) {
         console.error("Error marking notification as read:", error);
-        Alert.alert("Error", "Failed to mark notification as read.");
+        Alert.alert(
+          "Notifications Update Failed",
+          "Unable to mark notifications as read. Please try again.",
+        );
       }
     },
     [fetchNotifications, userId],
@@ -969,9 +981,15 @@ export default function DashboardScreen() {
             <View style={styles.heroLeft}>
               {loadingName ? (
                 <>
-                  <View style={[styles.skeletonBlock, styles.heroEyebrowSkeleton]} />
-                  <View style={[styles.skeletonBlock, styles.heroGreetingSkeleton]} />
-                  <View style={[styles.skeletonBlock, styles.heroSubtitleSkeleton]} />
+                  <View
+                    style={[styles.skeletonBlock, styles.heroEyebrowSkeleton]}
+                  />
+                  <View
+                    style={[styles.skeletonBlock, styles.heroGreetingSkeleton]}
+                  />
+                  <View
+                    style={[styles.skeletonBlock, styles.heroSubtitleSkeleton]}
+                  />
                 </>
               ) : (
                 <>
@@ -1029,7 +1047,10 @@ export default function DashboardScreen() {
                   color={irrigStatus.textColor}
                 />
                 <Text
-                  style={[styles.heroChipText, { color: irrigStatus.textColor }]}
+                  style={[
+                    styles.heroChipText,
+                    { color: irrigStatus.textColor },
+                  ]}
                 >
                   {irrigStatus.label}
                 </Text>
@@ -1057,8 +1078,12 @@ export default function DashboardScreen() {
             <Text style={styles.cardTitle}>Field Conditions</Text>
             {sensorLoading ? (
               <View style={styles.lastUpdatedSkeletonRow}>
-                <View style={[styles.skeletonBlock, styles.lastUpdatedSkeletonIcon]} />
-                <View style={[styles.skeletonBlock, styles.lastUpdatedSkeletonText]} />
+                <View
+                  style={[styles.skeletonBlock, styles.lastUpdatedSkeletonIcon]}
+                />
+                <View
+                  style={[styles.skeletonBlock, styles.lastUpdatedSkeletonText]}
+                />
               </View>
             ) : lastUpdated ? (
               <View
@@ -1095,7 +1120,10 @@ export default function DashboardScreen() {
                       style={[styles.skeletonBlock, styles.gaugeSkeletonLabel]}
                     />
                     <View
-                      style={[styles.skeletonBlock, styles.gaugeSkeletonSubLabel]}
+                      style={[
+                        styles.skeletonBlock,
+                        styles.gaugeSkeletonSubLabel,
+                      ]}
                     />
                   </View>
                 ))}
@@ -1127,11 +1155,7 @@ export default function DashboardScreen() {
                   }
                   unit="°C"
                   icon={
-                    <FontAwesome
-                      name="thermometer"
-                      size={14}
-                      color="#F97316"
-                    />
+                    <FontAwesome name="thermometer" size={14} color="#F97316" />
                   }
                 />
                 <CircularGauge
@@ -1162,11 +1186,31 @@ export default function DashboardScreen() {
               <View style={styles.forecastLoadingWrap}>
                 {[0, 1, 2, 3].map((key) => (
                   <View key={key} style={styles.forecastSkeletonCard}>
-                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineSm]} />
-                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineXs]} />
+                    <View
+                      style={[
+                        styles.skeletonBlock,
+                        styles.forecastSkeletonLineSm,
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.skeletonBlock,
+                        styles.forecastSkeletonLineXs,
+                      ]}
+                    />
                     <View style={styles.forecastSkeletonEmoji} />
-                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineSm]} />
-                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineMd]} />
+                    <View
+                      style={[
+                        styles.skeletonBlock,
+                        styles.forecastSkeletonLineSm,
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.skeletonBlock,
+                        styles.forecastSkeletonLineMd,
+                      ]}
+                    />
                   </View>
                 ))}
               </View>
@@ -1307,7 +1351,9 @@ export default function DashboardScreen() {
                 <FontAwesome
                   name={autoIrrigationPendingOn ? "toggle-on" : "toggle-off"}
                   size={22}
-                  color={autoIrrigationPendingOn ? colors.brandGreen : "#64748B"}
+                  color={
+                    autoIrrigationPendingOn ? colors.brandGreen : "#64748B"
+                  }
                 />
               </View>
               <Text style={styles.popupTitle}>
@@ -1337,7 +1383,9 @@ export default function DashboardScreen() {
                       ? styles.autoIrrigationModalConfirmOn
                       : styles.autoIrrigationModalConfirmOff,
                   ]}
-                  onPress={() => applyAutoIrrigationMode(autoIrrigationPendingOn)}
+                  onPress={() =>
+                    applyAutoIrrigationMode(autoIrrigationPendingOn)
+                  }
                   activeOpacity={0.85}
                 >
                   <Text style={styles.autoIrrigationModalConfirmText}>

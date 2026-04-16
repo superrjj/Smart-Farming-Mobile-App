@@ -818,7 +818,10 @@ export default function IrrigationScheduleScreen() {
       newScheduleDates.length === 0 ||
       newScheduleTimes.length === 0
     ) {
-      Alert.alert("Error", "Please select at least one date and one time");
+      Alert.alert(
+        "Action Required",
+        "Unable to proceed. Please select at least one date and one time slot before continuing.",
+      );
       return;
     }
     if (isSubmitting) return; // guard against double-tap
@@ -882,7 +885,7 @@ export default function IrrigationScheduleScreen() {
         if (error.code === "42703" && error.message.includes("time")) {
           Alert.alert(
             "Database Schema Error",
-            'The "time" column does not exist. Please add it:\n\nALTER TABLE irrigation_scheduled_dates ADD COLUMN time VARCHAR(20);',
+            "Something went wrong while saving your schedule. Please contact support if this issue persists.",
           );
           return;
         }
@@ -951,10 +954,16 @@ export default function IrrigationScheduleScreen() {
       if (error) throw error;
       if (currentScheduleId) await fetchScheduledDates(currentScheduleId);
       setScheduleInfoModalVisible(false);
-      Alert.alert("Success", "Schedule deleted");
+      Alert.alert(
+        "Schedule Deleted",
+        "The schedule has been successfully deleted.",
+      );
     } catch (error) {
       console.error("Error deleting schedule:", error);
-      Alert.alert("Error", "Failed to delete schedule");
+      Alert.alert(
+        "Deletion Failed",
+        "Unable to delete the schedule. Please try again or contact support if the issue persists.",
+      );
     }
   };
 
@@ -1166,7 +1175,10 @@ export default function IrrigationScheduleScreen() {
       setAlarmScheduleData(null);
     } catch (error) {
       console.error("Error deleting schedule from alarm:", error);
-      Alert.alert("Error", "Failed to dismiss schedule");
+      Alert.alert(
+        "Dismissal Failed",
+        "Unable to dismiss the schedule. Please try again or contact support if the issue persists.",
+      );
       setAlarmModalVisible(false);
       setAlarmScheduleData(null);
     }
