@@ -413,7 +413,10 @@ export default function WaterRequirementScreen() {
     const parseValue = (value: string, label: string): number | null => {
       const trimmed = value.trim();
       if (!trimmed) {
-        Alert.alert("Error", `${label} is required`);
+        Alert.alert(
+          `${label} Required`,
+          `Please enter your ${label.toLowerCase()} to continue.`,
+        );
         return null;
       }
       const parsed = Number(trimmed);

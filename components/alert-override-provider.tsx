@@ -31,24 +31,48 @@ function inferStatusType(
   message: string,
 ): "success" | "error" | "warning" {
   const text = `${title} ${message}`.toLowerCase();
+  const includesAny = (needles: string[]) =>
+    needles.some((needle) => text.includes(needle));
+
   if (
-    text.includes("warning") ||
-    text.includes("past") ||
-    text.includes("outside") ||
-    text.includes("caution") ||
-    text.includes("permission")
-  ) {
-    return "warning";
-  }
-  if (
-    text.includes("error") ||
-    text.includes("failed") ||
-    text.includes("invalid") ||
-    text.includes("missing") ||
-    text.includes("not found")
+    includesAny([
+      "error",
+      "failed",
+      "invalid",
+      "missing",
+      "not found",
+      "incorrect",
+      "unable",
+      "incomplete",
+      "required",
+      "too short",
+      "don't match",
+    ])
   ) {
     return "error";
   }
+
+  if (
+    includesAny([
+      "warning",
+      "caution",
+      "permission",
+      "past",
+      "outside",
+      "out of range",
+      "already",
+      "duplicate",
+      "action required",
+      "recommended range",
+      "reset",
+      "unavailable",
+      "blocked",
+      "not set up",
+    ])
+  ) {
+    return "warning";
+  }
+
   return "success";
 }
 

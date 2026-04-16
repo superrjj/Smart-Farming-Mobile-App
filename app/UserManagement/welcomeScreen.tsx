@@ -1,23 +1,23 @@
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { fontScale, scale } from "@/lib/responsive";
+import { setFirstLaunchComplete } from "@/lib/storage";
+import { useRouter } from "expo-router";
+import { useEffect } from "react";
+import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from 'expo-router';
-import { setFirstLaunchComplete } from '@/lib/storage';
-import { scale, fontScale } from '@/lib/responsive';
-import { useEffect } from 'react';
 
 const colors = {
-  brandGreen: '#3E9B4F',
-  brandBlue: '#007AFF',
-  textDark: '#111827',
-  textMuted: '#6B7280',
-  dotInactive: '#E5E7EB',
+  brandGreen: "#3E9B4F",
+  brandBlue: "#007AFF",
+  textDark: "#111827",
+  textMuted: "#6B7280",
+  dotInactive: "#E5E7EB",
 };
 
 const fonts = {
-  regular: 'Poppins_400Regular',
-  medium: 'Poppins_500Medium',
-  semibold: 'Poppins_600SemiBold',
-  bold: 'Poppins_700Bold',
+  regular: "Poppins_400Regular",
+  medium: "Poppins_500Medium",
+  semibold: "Poppins_600SemiBold",
+  bold: "Poppins_700Bold",
 };
 
 export default function WelcomeScreen() {
@@ -29,7 +29,7 @@ export default function WelcomeScreen() {
       try {
         await setFirstLaunchComplete();
       } catch (error) {
-        console.error('Error marking first launch complete:', error);
+        console.error("Error marking first launch complete:", error);
       }
     };
     markFirstLaunchComplete();
@@ -40,7 +40,7 @@ export default function WelcomeScreen() {
       <View style={styles.container}>
         <View style={styles.illustrationWrapper}>
           <Image
-            source={require('@/assets/welcome-screen.png')}
+            source={require("@/assets/welcome-screen.png")}
             style={styles.illustration}
             resizeMode="contain"
           />
@@ -49,23 +49,21 @@ export default function WelcomeScreen() {
         <View style={styles.content}>
           <Text style={styles.title}>Welcome to AgriHydra</Text>
           <Text style={styles.subtitle}>
-            Smart irrigation and monitoring tailored for string beans farmers. Track schedules,
-            water usage, and farm conditions with ease.
+            Smart irrigation and monitoring for string bean farmers. Track
+            schedules, water usage, and farm conditions — all in one place.
           </Text>
-
-      
 
           <TouchableOpacity
             activeOpacity={0.9}
             style={styles.loginButton}
-            onPress={() => router.push('/UserManagement/login')}
+            onPress={() => router.push("/UserManagement/login")}
           >
             <Text style={styles.loginButtonText}>Login</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => router.push('/UserManagement/signup')}
+            onPress={() => router.push("/UserManagement/signup")}
           >
             <Text style={styles.createAccountText}>Create an account</Text>
           </TouchableOpacity>
@@ -78,51 +76,51 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
   },
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 32,
   },
   illustrationWrapper: {
     flex: 1.1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: 24,
     paddingTop: 32,
   },
   illustration: {
-    width: '90%',
-    height: '90%',
+    width: "90%",
+    height: "90%",
   },
   content: {
     flex: 0.9,
     paddingHorizontal: 8,
     paddingBottom: 8,
-    justifyContent: 'flex-start',
+    justifyContent: "flex-start",
   },
   title: {
     fontFamily: fonts.bold,
     fontSize: fontScale(24),
     color: colors.textDark,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: scale(8),
   },
   subtitle: {
     fontFamily: fonts.regular,
     fontSize: fontScale(14),
     color: colors.textMuted,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: scale(20),
     marginBottom: scale(20),
   },
   dots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     gap: 6,
     marginBottom: scale(24),
   },
@@ -139,23 +137,21 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     backgroundColor: colors.brandGreen,
-    borderRadius: 999,
+    borderRadius: 12,
     paddingVertical: scale(14),
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: scale(14),
   },
   loginButtonText: {
     fontFamily: fonts.semibold,
     fontSize: fontScale(16),
-    color: '#ffffff',
+    color: "#ffffff",
   },
   createAccountText: {
     fontFamily: fonts.medium,
     fontSize: fontScale(16),
     color: colors.brandBlue,
-    textAlign: 'center',
+    textAlign: "center",
   },
 });
-
-

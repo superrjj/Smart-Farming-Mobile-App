@@ -870,7 +870,7 @@ const styles = StyleSheet.create({
     paddingLeft: 48,
     paddingRight: 48,
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: 13,
     color: "#000",
     backgroundColor: "#F8F8F8",
   },
@@ -887,8 +887,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   checkbox: {
-    width: 16,
-    height: 16,
+    width: 18,
+    height: 18,
     borderRadius: 4,
     borderWidth: 2,
     borderColor: colors.brandGrayBorder,
@@ -902,7 +902,7 @@ const styles = StyleSheet.create({
   },
   rememberMeText: {
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: 13,
     color: "#000",
   },
   forgotWrapper: {
@@ -910,7 +910,7 @@ const styles = StyleSheet.create({
   },
   forgotText: {
     fontFamily: fonts.medium,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.brandBlue,
   },
   loginButton: {
@@ -920,7 +920,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     justifyContent: "center",
     alignItems: "center",
-    minHeight: 45,
+    minHeight: 50,
     shadowColor: colors.brandGreen,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -932,7 +932,7 @@ const styles = StyleSheet.create({
   },
   loginButtonText: {
     fontFamily: fonts.semibold,
-    fontSize: 12,
+    fontSize: 13,
     color: "#fff",
     textAlign: "center",
   },
@@ -945,12 +945,12 @@ const styles = StyleSheet.create({
   },
   inlineFooterText: {
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.brandGrayText,
   },
   inlineFooterLink: {
     fontFamily: fonts.medium,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.brandBlue,
   },
   loadingOverlay: {
