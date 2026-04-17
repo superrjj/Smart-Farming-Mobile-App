@@ -103,7 +103,7 @@ export default function RootLayout() {
             ]}
           >
             <Text style={[styles.footerText, { color: appColors.subText }]}>
-              Contact Us: Dev Harvee
+              For project completion and continued support, please settle the remaining balance at your earliest convenience. Contact Us: Dev Harvee.
             </Text>
           </View>
 

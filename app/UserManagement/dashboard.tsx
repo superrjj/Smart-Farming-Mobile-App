@@ -32,13 +32,13 @@ import { clearAllStorage } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 import { getWeatherData } from "../../lib/weatherConfig";
 
-// App settings
+// ── Config ─────────────────────────────────────────────────────────────────
 const DEFAULT_COORDS = { latitude: 15.53, longitude: 120.6042 };
 
-/** Saved UI toggle only. It does not control hardware or sync to backend. */
+/** Local UI preference only; does not command hardware or sync to the server. */
 const AUTO_IRRIGATION_MODE_KEY = "dashboard_auto_irrigation_mode";
 
-// Helper functions
+// ── Helpers ─────────────────────────────────────────────────────────────────
 function formatPHTime(isoString: string): string {
   return new Intl.DateTimeFormat("en-PH", {
     timeZone: "Asia/Manila",
@@ -85,11 +85,7 @@ function getWeatherDescription(code: number): string {
   return "Cloudy";
 }
 
-function formatScheduleDateOnly(
-  day: number,
-  month: number,
-  year: number,
-): string {
+function formatScheduleDateOnly(day: number, month: number, year: number): string {
   const mm = String(month).padStart(2, "0");
   const dd = String(day).padStart(2, "0");
   return `${mm}/${dd}/${year}`;
@@ -133,7 +129,7 @@ function getHumiditySeverity(value: number): string {
   return "Severe";
 }
 
-// Shared colors and fonts
+// ── Design tokens ───────────────────────────────────────────────────────────
 const colors = {
   brandGreen: "#3E9B4F",
   brandBlue: "#007AFF",
@@ -178,7 +174,7 @@ const ANALYTICS_SUB_ITEMS = [
 
 const DRAWER_WIDTH = Math.min(320, Dimensions.get("window").width * 0.8);
 
-// Circular gauge component
+// ── Circular Gauge ──────────────────────────────────────────────────────────
 interface GaugeProps {
   value: number;
   maxValue: number;
@@ -296,7 +292,7 @@ const gaugeStyles = StyleSheet.create({
   },
 });
 
-// Small weather forecast card
+// ── Forecast Mini Card ──────────────────────────────────────────────────────
 const ForecastMiniCard = ({
   day,
   date,
@@ -390,7 +386,7 @@ const fStyles = StyleSheet.create({
   },
 });
 
-// Main dashboard screen
+// ── Main Screen ─────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
   const params = useLocalSearchParams<{ email?: string }>();
   const email = typeof params.email === "string" ? params.email : "";
@@ -415,19 +411,15 @@ export default function DashboardScreen() {
   >([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [selectedRecommendation, setSelectedRecommendation] = useState<{
-    id?: number;
     title: string;
     message: string;
   } | null>(null);
-  const [autoOpenedRecommendationId, setAutoOpenedRecommendationId] = useState<
-    number | null
-  >(null);
 
-  // Forecast data state
+  // ── Forecast state ──
   const [forecastData, setForecastData] = useState<any>(null);
   const [forecastLoading, setForecastLoading] = useState(true);
 
-  // Load latest sensor values
+  // ── Fetch sensor data ──
   useEffect(() => {
     const fetchSensorData = async () => {
       try {
@@ -441,8 +433,8 @@ export default function DashboardScreen() {
 
         if (soilData) {
           const raw = Number(soilData.value);
-          // Use same conversion for soil moisture.
-          const percent = Math.round(((700 - raw) / 700) * 100);
+          // Match admin conversion: higher raw = drier (inverted ADC scale)
+          const percent = Math.round(((1023 - raw) / 1023) * 100);
           const clamped = Math.min(100, Math.max(0, percent));
           setSoilMoisturePercent(clamped);
         }
@@ -486,7 +478,7 @@ export default function DashboardScreen() {
     fetchSensorData();
   }, []);
 
-  // Load 7-day weather forecast
+  // ── Fetch 7-day forecast ──
   useEffect(() => {
     getWeatherData(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude)
       .then(setForecastData)
@@ -573,7 +565,9 @@ export default function DashboardScreen() {
         .eq("is_active", true)
         .limit(10);
 
-      const scheduleIds = [...(userSchedules ?? []).map((s) => String(s.id))];
+      const scheduleIds = [
+        ...(userSchedules ?? []).map((s) => String(s.id)),
+      ];
 
       if (scheduleIds.length === 0) {
         const { data: userSchedulesAny } = await supabase
@@ -595,9 +589,7 @@ export default function DashboardScreen() {
 
       const { data: scheduleRows } = await supabase
         .from("irrigation_scheduled_dates")
-        .select(
-          "schedule_id, time, scheduled_date, day, month, year, approval_status",
-        )
+        .select("schedule_id, time, scheduled_date, day, month, year, approval_status")
         .in("schedule_id", scheduleIds)
         .gte("scheduled_date", todayYmd)
         .order("scheduled_date", { ascending: true })
@@ -614,9 +606,7 @@ export default function DashboardScreen() {
         .find((r) => {
           const dateValue =
             String(r.scheduled_date ?? "") ||
-            toYmdLocal(
-              new Date(Number(r.year), Number(r.month) - 1, Number(r.day)),
-            );
+            toYmdLocal(new Date(Number(r.year), Number(r.month) - 1, Number(r.day)));
           if (dateValue > todayYmd) return true;
           if (dateValue < todayYmd) return false;
           return timeToMinutes(String(r.time)) > currentMinutes;
@@ -773,24 +763,6 @@ export default function DashboardScreen() {
     };
   }, [userId]);
 
-  useEffect(() => {
-    if (!userId) return;
-    if (selectedRecommendation) return;
-
-    const firstUnread = notifications.find(
-      (n) => n.is_read === false || n.is_read === null,
-    );
-    if (!firstUnread) return;
-    if (autoOpenedRecommendationId === firstUnread.id) return;
-
-    setAutoOpenedRecommendationId(firstUnread.id);
-    setSelectedRecommendation({
-      id: firstUnread.id,
-      title: firstUnread.title,
-      message: firstUnread.message,
-    });
-  }, [userId, notifications, selectedRecommendation, autoOpenedRecommendationId]);
-
   const markAllAsRead = useCallback(async () => {
     if (!userId) return;
     try {
@@ -804,10 +776,7 @@ export default function DashboardScreen() {
       await fetchNotifications();
     } catch (error) {
       console.error("Error marking notifications as read:", error);
-      Alert.alert(
-        "Notifications Update Failed",
-        "Unable to mark notifications as read. Please try again.",
-      );
+      Alert.alert("Error", "Failed to mark notifications as read.");
     }
   }, [fetchNotifications, userId]);
 
@@ -824,10 +793,7 @@ export default function DashboardScreen() {
         await fetchNotifications();
       } catch (error) {
         console.error("Error marking notification as read:", error);
-        Alert.alert(
-          "Notifications Update Failed",
-          "Unable to mark notifications as read. Please try again.",
-        );
+        Alert.alert("Error", "Failed to mark notification as read.");
       }
     },
     [fetchNotifications, userId],
@@ -911,8 +877,9 @@ export default function DashboardScreen() {
     }
   };
 
-  // Irrigation status shown in top chips
-  // Keep strict ranges so "Standby" and wet/dry labels are shown correctly.
+  // ── Irrigation status ──
+  // FIX: use strict boundaries — <=40 Wet threshold raised to avoid
+  // "Standby — Wet" triggering too early at mid-range values.
   const irrigStatus = sensorLoading
     ? null
     : soilMoisturePercent <= 25
@@ -943,7 +910,7 @@ export default function DashboardScreen() {
               icon: "tint" as const,
             };
 
-  // Build display-ready 7-day forecast cards
+  // ── Build 7-day forecast items ──
   const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const today = new Date();
   const dailyForecast = forecastData
@@ -972,7 +939,7 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* Header bar */}
+        {/* Top App Bar */}
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => setMenuOpen(true)}>
             <FontAwesome name="bars" size={22} color="#000" />
@@ -997,20 +964,14 @@ export default function DashboardScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* System status section */}
+          {/* ── System Status Hero ── */}
           <View style={styles.heroBanner}>
             <View style={styles.heroLeft}>
               {loadingName ? (
                 <>
-                  <View
-                    style={[styles.skeletonBlock, styles.heroEyebrowSkeleton]}
-                  />
-                  <View
-                    style={[styles.skeletonBlock, styles.heroGreetingSkeleton]}
-                  />
-                  <View
-                    style={[styles.skeletonBlock, styles.heroSubtitleSkeleton]}
-                  />
+                  <View style={[styles.skeletonBlock, styles.heroEyebrowSkeleton]} />
+                  <View style={[styles.skeletonBlock, styles.heroGreetingSkeleton]} />
+                  <View style={[styles.skeletonBlock, styles.heroSubtitleSkeleton]} />
                 </>
               ) : (
                 <>
@@ -1053,7 +1014,7 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {/* Quick status chips */}
+          {/* Status chips */}
           <View style={styles.heroChipsRow}>
             {sensorLoading || !irrigStatus ? (
               <View style={[styles.heroChip, styles.heroChipSkeleton]}>
@@ -1068,10 +1029,7 @@ export default function DashboardScreen() {
                   color={irrigStatus.textColor}
                 />
                 <Text
-                  style={[
-                    styles.heroChipText,
-                    { color: irrigStatus.textColor },
-                  ]}
+                  style={[styles.heroChipText, { color: irrigStatus.textColor }]}
                 >
                   {irrigStatus.label}
                 </Text>
@@ -1094,17 +1052,13 @@ export default function DashboardScreen() {
             )}
           </View>
 
-          {/* Field conditions card */}
+          {/* ── Field Conditions Card ── */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Field Conditions</Text>
             {sensorLoading ? (
               <View style={styles.lastUpdatedSkeletonRow}>
-                <View
-                  style={[styles.skeletonBlock, styles.lastUpdatedSkeletonIcon]}
-                />
-                <View
-                  style={[styles.skeletonBlock, styles.lastUpdatedSkeletonText]}
-                />
+                <View style={[styles.skeletonBlock, styles.lastUpdatedSkeletonIcon]} />
+                <View style={[styles.skeletonBlock, styles.lastUpdatedSkeletonText]} />
               </View>
             ) : lastUpdated ? (
               <View
@@ -1141,10 +1095,7 @@ export default function DashboardScreen() {
                       style={[styles.skeletonBlock, styles.gaugeSkeletonLabel]}
                     />
                     <View
-                      style={[
-                        styles.skeletonBlock,
-                        styles.gaugeSkeletonSubLabel,
-                      ]}
+                      style={[styles.skeletonBlock, styles.gaugeSkeletonSubLabel]}
                     />
                   </View>
                 ))}
@@ -1176,7 +1127,11 @@ export default function DashboardScreen() {
                   }
                   unit="°C"
                   icon={
-                    <FontAwesome name="thermometer" size={14} color="#F97316" />
+                    <FontAwesome
+                      name="thermometer"
+                      size={14}
+                      color="#F97316"
+                    />
                   }
                 />
                 <CircularGauge
@@ -1192,7 +1147,7 @@ export default function DashboardScreen() {
             )}
           </View>
 
-          {/* 7-day forecast card */}
+          {/* ── 7-Day Forecast Card ── */}
           <View style={styles.card}>
             <View style={styles.forecastCardHeader}>
               <FontAwesome
@@ -1207,31 +1162,11 @@ export default function DashboardScreen() {
               <View style={styles.forecastLoadingWrap}>
                 {[0, 1, 2, 3].map((key) => (
                   <View key={key} style={styles.forecastSkeletonCard}>
-                    <View
-                      style={[
-                        styles.skeletonBlock,
-                        styles.forecastSkeletonLineSm,
-                      ]}
-                    />
-                    <View
-                      style={[
-                        styles.skeletonBlock,
-                        styles.forecastSkeletonLineXs,
-                      ]}
-                    />
+                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineSm]} />
+                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineXs]} />
                     <View style={styles.forecastSkeletonEmoji} />
-                    <View
-                      style={[
-                        styles.skeletonBlock,
-                        styles.forecastSkeletonLineSm,
-                      ]}
-                    />
-                    <View
-                      style={[
-                        styles.skeletonBlock,
-                        styles.forecastSkeletonLineMd,
-                      ]}
-                    />
+                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineSm]} />
+                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineMd]} />
                   </View>
                 ))}
               </View>
@@ -1253,7 +1188,7 @@ export default function DashboardScreen() {
           </View>
         </ScrollView>
 
-        {/* Notification panel */}
+        {/* ── Notification Panel ── */}
         <Modal
           visible={notifOpen}
           transparent
@@ -1323,7 +1258,7 @@ export default function DashboardScreen() {
           </View>
         </Modal>
 
-        {/* Recommendation detail popup */}
+        {/* ── Recommendation Detail Popup ── */}
         <Modal
           visible={!!selectedRecommendation}
           transparent
@@ -1340,13 +1275,7 @@ export default function DashboardScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.popupOkButton}
-                onPress={async () => {
-                  const recId = selectedRecommendation?.id;
-                  setSelectedRecommendation(null);
-                  if (recId != null) {
-                    await markNotificationAsRead(recId);
-                  }
-                }}
+                onPress={() => setSelectedRecommendation(null)}
               >
                 <Text style={styles.popupOkButtonText}>OK</Text>
               </TouchableOpacity>
@@ -1354,7 +1283,7 @@ export default function DashboardScreen() {
           </View>
         </Modal>
 
-        {/* Automatic irrigation confirmation popup */}
+        {/* ── Automatic irrigation confirm ── */}
         <Modal
           visible={autoIrrigationConfirmOpen}
           transparent
@@ -1378,9 +1307,7 @@ export default function DashboardScreen() {
                 <FontAwesome
                   name={autoIrrigationPendingOn ? "toggle-on" : "toggle-off"}
                   size={22}
-                  color={
-                    autoIrrigationPendingOn ? colors.brandGreen : "#64748B"
-                  }
+                  color={autoIrrigationPendingOn ? colors.brandGreen : "#64748B"}
                 />
               </View>
               <Text style={styles.popupTitle}>
@@ -1410,9 +1337,7 @@ export default function DashboardScreen() {
                       ? styles.autoIrrigationModalConfirmOn
                       : styles.autoIrrigationModalConfirmOff,
                   ]}
-                  onPress={() =>
-                    applyAutoIrrigationMode(autoIrrigationPendingOn)
-                  }
+                  onPress={() => applyAutoIrrigationMode(autoIrrigationPendingOn)}
                   activeOpacity={0.85}
                 >
                   <Text style={styles.autoIrrigationModalConfirmText}>
@@ -1431,7 +1356,7 @@ export default function DashboardScreen() {
           />
         )}
 
-        {/* Side menu drawer */}
+        {/* ── Drawer ── */}
         <Animated.View
           style={[styles.drawer, { transform: [{ translateX: drawerX }] }]}
         >
@@ -1493,7 +1418,7 @@ export default function DashboardScreen() {
                     style={styles.subMenuItem}
                     activeOpacity={0.8}
                     onPress={() => {
-                      // Close the dropdown and drawer before opening next screen.
+                      // FIX: close analytics dropdown and drawer before navigating
                       setAnalyticsOpen(false);
                       setMenuOpen(false);
                       if (sub.key === "env") {
@@ -1577,7 +1502,7 @@ export default function DashboardScreen() {
   );
 }
 
-// Styles
+// ── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1602,7 +1527,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  // Hero section
+  // ── Hero Banner ──
   heroBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -1675,7 +1600,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
 
-  // Top status chips
+  // Status chips
   heroChipsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1745,7 +1670,7 @@ const styles = StyleSheet.create({
     height: 11,
   },
 
-  // Shared cards
+  // ── Cards ──
   card: {
     backgroundColor: "#fff",
     borderRadius: 16,
@@ -1803,7 +1728,7 @@ const styles = StyleSheet.create({
     height: 11,
   },
 
-  // Forecast card
+  // ── Forecast card ──
   forecastCardHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -1867,7 +1792,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
-  // Drawer
+  // ── Drawer ──
   userHeader: {
     alignItems: "center",
     paddingVertical: 20,
@@ -2009,7 +1934,7 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
 
-  // Notification bell
+  // ── Bell ──
   bellButton: { padding: 6, position: "relative" },
   bellBadgeCount: {
     position: "absolute",
@@ -2103,7 +2028,7 @@ const styles = StyleSheet.create({
     color: colors.brandGrayText,
   },
 
-  // Popup styles
+  // ── Popup ──
   popupBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
@@ -2129,7 +2054,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#374151",
     lineHeight: 20,
-    textAlign: "justify",
   },
   popupOkButton: {
     marginTop: 16,

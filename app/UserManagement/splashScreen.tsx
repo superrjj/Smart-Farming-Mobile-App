@@ -59,11 +59,8 @@ export default function SplashScreen() {
               const { profile: userProfile, error } =
                 await fetchUserProfileByCredentials(trimmedInput, hashedPassword);
 
-              if (!error && userProfile) {
-                const profileEmail = userProfile.email;
-                if (typeof profileEmail !== 'string') {
-                  await clearSavedCredentials();
-                } else if (isAdminRole(userProfile.role)) {
+              if (!error && userProfile && typeof userProfile.email === 'string') {
+                if (isAdminRole(userProfile.role)) {
                   await clearSavedCredentials();
                   setTimeout(() => {
                     router.replace({
@@ -72,16 +69,15 @@ export default function SplashScreen() {
                     });
                   }, 4000);
                   return;
-                } else {
-                  // Farmer (or non-admin): go to dashboard
-                  setTimeout(() => {
-                    router.replace({
-                      pathname: '/UserManagement/dashboard',
-                      params: { email: profileEmail },
-                    });
-                  }, 4000);
-                  return;
                 }
+                // Farmer (or non-admin): go to dashboard
+                setTimeout(() => {
+                  router.replace({
+                    pathname: '/UserManagement/dashboard',
+                    params: { email: userProfile.email },
+                  });
+                }, 4000);
+                return;
               } else {
                 // Credentials are invalid, clear them
                 await clearSavedCredentials();

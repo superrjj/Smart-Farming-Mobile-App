@@ -218,18 +218,12 @@ export default function FarmerProfileScreen() {
 
   const handleSaveProfile = async () => {
     if (!profile.name.trim()) {
-      Alert.alert(
-        "Full Name Required",
-        "Please enter your full name to continue.",
-      );
+      Alert.alert("Error", "Please enter your full name");
       return;
     }
 
     if (!profile.contactNumber.trim()) {
-      Alert.alert(
-        "Contact Number Required",
-        "Please enter your contact number to continue.",
-      );
+      Alert.alert("Error", "Please enter your contact number");
       return;
     }
 
@@ -248,27 +242,17 @@ export default function FarmerProfileScreen() {
       );
 
       if (error) {
-        console.error("Profile save failed:", error); // or Sentry.captureException(error)
-        Alert.alert(
-          "Profile Save Failed",
-          __DEV__
-            ? `Unable to save your profile: ${error.message}`
-            : "Unable to save your profile. Please try again or contact support if the issue persists.",
-        );
+        console.error("Database save error:", error);
+        Alert.alert("Error", `Failed to save profile: ${error.message}`);
       } else {
-        Alert.alert(
-          "Profile Updated",
-          "Your profile has been updated successfully.",
-        );
+        Alert.alert("Success", "Profile updated successfully");
         setOriginalProfile({ ...profile });
       }
     } catch (error) {
       console.error("Save profile error:", error);
       Alert.alert(
-        "Profile Save Failed",
-        __DEV__
-          ? `Unable to save your profile: ${error instanceof Error ? error.message : "Unknown error"}`
-          : "Unable to save your profile. Please try again or contact support if the issue persists.",
+        "Error",
+        `Failed to save profile: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     } finally {
       setSaving(false);
@@ -307,34 +291,22 @@ export default function FarmerProfileScreen() {
 
   const handleSaveFarmInfo = async () => {
     if (!farmName.trim()) {
-      Alert.alert(
-        "Farm Name Required",
-        "Please enter your farm name to continue.",
-      );
+      Alert.alert("Error", "Please enter farm name");
       return;
     }
 
     if (!farmLocation.trim()) {
-      Alert.alert(
-        "Farm Location Required",
-        "Please enter your farm location to continue.",
-      );
+      Alert.alert("Error", "Please enter farm location");
       return;
     }
 
     if (!areaSize.trim()) {
-      Alert.alert(
-        "Area Size Required",
-        "Please enter the area size to continue.",
-      );
+      Alert.alert("Error", "Please enter area size");
       return;
     }
 
     if (!CROP_TYPE_OPTIONS.some((o) => o === cropType)) {
-      Alert.alert(
-        "Bean Type Required",
-        "Please select either Bush Type or Pole Type to continue.",
-      );
+      Alert.alert("Error", "Please select Bush type or Pole Type");
       return;
     }
 
@@ -350,8 +322,8 @@ export default function FarmerProfileScreen() {
       if (userError || !userData) {
         console.error("Error fetching user:", userError);
         Alert.alert(
-          "Profile Incomplete",
-          "Your profile could not be found. Please complete your profile before proceeding.",
+          "Error",
+          "User not found. Please complete your profile first.",
         );
         setSavingFarmInfo(false);
         return;
@@ -395,8 +367,8 @@ export default function FarmerProfileScreen() {
       if (error) {
         console.error("Error saving farm info:", error);
         Alert.alert(
-          "Farm Save Failed",
-          `Unable to save farm information: ${error.message}`,
+          "Error",
+          `Failed to save farm information: ${error.message}`,
         );
         return;
       }
@@ -420,17 +392,12 @@ export default function FarmerProfileScreen() {
       }
 
       Alert.alert(
-        farmId ? "Farm Updated" : "Farm Saved",
-        farmId
-          ? "Your farm information has been updated successfully."
-          : "Your farm information has been saved successfully.",
+        "Success",
+        `Farm information ${farmId ? "updated" : "saved"} successfully`,
       );
     } catch (error) {
       console.error("Save farm info error:", error);
-      Alert.alert(
-        "Farm Save Failed",
-        "Unable to save your farm information. Please try again or contact support if the issue persists.",
-      );
+      Alert.alert("Error", "Failed to save farm information");
     } finally {
       setSavingFarmInfo(false);
     }
@@ -438,34 +405,22 @@ export default function FarmerProfileScreen() {
 
   const handleChangePassword = async () => {
     if (!currentPassword.trim()) {
-      Alert.alert(
-        "Current Password Required",
-        "Please enter your current password to continue.",
-      );
+      Alert.alert("Error", "Please enter your current password");
       return;
     }
 
     if (!newPassword.trim()) {
-      Alert.alert(
-        "New Password Required",
-        "Please enter your new password to continue.",
-      );
+      Alert.alert("Error", "Please enter your new password");
       return;
     }
 
     if (newPassword.length < 6) {
-      Alert.alert(
-        "Password Too Short",
-        "Your new password must be at least 6 characters long.",
-      );
+      Alert.alert("Error", "Password must be at least 6 characters");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert(
-        "Passwords Don't Match",
-        "Your new password and confirmation password do not match. Please try again.",
-      );
+      Alert.alert("Error", "New passwords do not match");
       return;
     }
 
@@ -480,26 +435,17 @@ export default function FarmerProfileScreen() {
 
       if (fetchError) {
         console.error("Error fetching user data:", fetchError);
-        Alert.alert(
-          "Password Verification Failed",
-          "Unable to verify your current password. Please check that it is correct and try again.",
-        );
+        Alert.alert("Error", "Failed to verify current password");
         return;
       }
 
       if (!userData || !userData.password) {
-        Alert.alert(
-          "Account Error",
-          "Something went wrong with your account. Please contact support for assistance.",
-        );
+        Alert.alert("Error", "User account not found or no password set");
         return;
       }
 
       if (userData.password !== hashedCurrentPassword) {
-        Alert.alert(
-          "Incorrect Password",
-          "The current password you entered is incorrect. Please try again.",
-        );
+        Alert.alert("Error", "Current password is incorrect");
         return;
       }
 
@@ -514,27 +460,18 @@ export default function FarmerProfileScreen() {
 
       if (updateError) {
         console.error("Error updating password:", updateError);
-        Alert.alert(
-          "Password Update Failed",
-          "Unable to update your password. Please try again or contact support if the issue persists.",
-        );
+        Alert.alert("Error", "Failed to update password");
         return;
       }
 
-      Alert.alert(
-        "Password Updated",
-        "Your password has been updated successfully.",
-      );
+      Alert.alert("Success", "Password updated successfully");
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
       setShowPasswordSection(false);
     } catch (error) {
       console.error("Password change error:", error);
-      Alert.alert(
-        "Password Update Failed",
-        "Unable to update your password. Please try again or contact support if the issue persists.",
-      );
+      Alert.alert("Error", "Failed to update password");
     }
   };
 
@@ -613,10 +550,7 @@ export default function FarmerProfileScreen() {
       if (!uploadResponse.ok) {
         const errorText = await uploadResponse.text();
         console.error("Upload failed:", errorText);
-        Alert.alert(
-          "Image Upload Failed",
-          "Unable to upload your image. Please check your connection and try again.",
-        );
+        Alert.alert("Error", "Failed to upload image. Please try again.");
         setUploadingImage(false);
         return;
       }
@@ -648,10 +582,7 @@ export default function FarmerProfileScreen() {
 
       if (dbError) {
         console.error("Database error:", dbError);
-        Alert.alert(
-          "Profile Save Failed",
-          "Your image was uploaded but could not be saved to your profile. Please try again or contact support if the issue persists.",
-        );
+        Alert.alert("Error", "Image uploaded but failed to save to profile");
         setUploadingImage(false);
         return;
       }
@@ -659,18 +590,12 @@ export default function FarmerProfileScreen() {
       // Update local state
       setProfile({ ...profile, profilePicture: publicUrl });
 
-      Alert.alert(
-        "Profile Picture Updated",
-        "Your profile picture has been updated successfully.",
-      );
+      Alert.alert("Success", "Profile picture updated successfully");
     } catch (error) {
       console.error("Upload error:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error occurred";
-      Alert.alert(
-        "Image Upload Failed",
-        `Unable to upload your image: ${errorMessage}`,
-      );
+      Alert.alert("Error", `Failed to upload image: ${errorMessage}`);
     } finally {
       setUploadingImage(false);
     }

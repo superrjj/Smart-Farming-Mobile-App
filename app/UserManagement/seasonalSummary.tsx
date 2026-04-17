@@ -241,103 +241,89 @@ const BarChart = ({
 }) => {
   const maxVal = Math.max(...data.map((d) => d.value), 1);
   const BAR_W = Math.max(20, (SCREEN_W - 64) / data.length - 4);
-  const Y_LABEL_W = 32;
   return (
-    <View style={{ flexDirection: "row" }}>
-      {/* Fixed Y-axis labels on the LEFT */}
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
       <View
         style={{
-          width: Y_LABEL_W,
+          width: Math.max(SCREEN_W - 64, data.length * (BAR_W + 4)),
           height: height + 28,
-          position: "relative",
         }}
       >
+        {[0.25, 0.5, 0.75, 1].map((pct) => (
+          <View
+            key={pct}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: height * (1 - pct),
+              height: 1,
+              backgroundColor: "#E2E8F0",
+            }}
+          />
+        ))}
         {[0.25, 0.5, 0.75, 1].map((pct) => (
           <Text
             key={pct}
             style={{
               position: "absolute",
-              left: 0,
-              top: height * (1 - pct) - 7,
+              right: 0,
+              top: height * (1 - pct) - 8,
               fontSize: 8,
               color: colors.grayText,
               fontFamily: fonts.regular,
-              textAlign: "left",
             }}
           >
             {Math.round(maxVal * pct)}
           </Text>
         ))}
-      </View>
-      {/* Scrollable bars area */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-        <View
-          style={{
-            width: Math.max(SCREEN_W - 64 - Y_LABEL_W, data.length * (BAR_W + 4)),
-            height: height + 28,
-          }}
-        >
-          {[0.25, 0.5, 0.75, 1].map((pct) => (
+        {data.map((d, i) => {
+          const barH = Math.max(2, (d.value / maxVal) * height);
+          const isTyphoon = TYPHOON_MONTHS.includes(d.month);
+          return (
             <View
-              key={pct}
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                top: height * (1 - pct),
-                height: 1,
-                backgroundColor: "#E2E8F0",
-              }}
-            />
-          ))}
-          {data.map((d, i) => {
-            const barH = Math.max(2, (d.value / maxVal) * height);
-            const isTyphoon = TYPHOON_MONTHS.includes(d.month);
-            return (
-              <View
-                key={i}
-                style={{
-                  position: "absolute",
-                  bottom: 20,
-                  left: i * (BAR_W + 4),
-                  width: BAR_W,
-                  alignItems: "center",
-                }}
-              >
-                <View
-                  style={{
-                    width: BAR_W,
-                    height: barH,
-                    backgroundColor: isTyphoon ? colors.orange : color,
-                    borderRadius: 4,
-                    opacity: 0.85,
-                  }}
-                />
-              </View>
-            );
-          })}
-          {data.map((d, i) => (
-            <Text
               key={i}
               style={{
                 position: "absolute",
-                bottom: 0,
+                bottom: 20,
                 left: i * (BAR_W + 4),
                 width: BAR_W,
-                textAlign: "center",
-                fontSize: 9,
-                color: TYPHOON_MONTHS.includes(d.month)
-                  ? colors.orange
-                  : colors.grayText,
-                fontFamily: fonts.regular,
+                alignItems: "center",
               }}
             >
-              {d.month}
-            </Text>
-          ))}
-        </View>
-      </ScrollView>
-    </View>
+              <View
+                style={{
+                  width: BAR_W,
+                  height: barH,
+                  backgroundColor: isTyphoon ? colors.orange : color,
+                  borderRadius: 4,
+                  opacity: 0.85,
+                }}
+              />
+            </View>
+          );
+        })}
+        {data.map((d, i) => (
+          <Text
+            key={i}
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: i * (BAR_W + 4),
+              width: BAR_W,
+              textAlign: "center",
+              fontSize: 9,
+              color: TYPHOON_MONTHS.includes(d.month)
+                ? colors.orange
+                : colors.grayText,
+              fontFamily: fonts.regular,
+            }}
+          >
+            {d.month}
+          </Text>
+        ))}
+      </View>
+    </ScrollView>
   );
 };
 
@@ -663,19 +649,22 @@ export default function SeasonalSummaryScreen() {
               </Text>
             )}
             <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderCell, { flex: 1.2 }]}>Month</Text>
+              <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Month</Text>
               <Text
                 style={[
                   styles.tableHeaderCell,
-                  { flex: 1.5, textAlign: "right" },
+                  { flex: 1.2, textAlign: "right" },
                 ]}
               >
-                Rain{"\n"}& Scarcity
+                Rain mm
+              </Text>
+              <Text style={[styles.tableHeaderCell, { flex: 2 }]}>
+                Scarcity
               </Text>
               <Text
                 style={[
                   styles.tableHeaderCell,
-                  { flex: 1.5, textAlign: "right" },
+                  { flex: 1.2, textAlign: "right" },
                 ]}
               >
                 Irrigate
@@ -683,7 +672,7 @@ export default function SeasonalSummaryScreen() {
               <Text
                 style={[
                   styles.tableHeaderCell,
-                  { flex: 1, textAlign: "center" },
+                  { flex: 0.8, textAlign: "center" },
                 ]}
               >
                 Status
@@ -712,46 +701,47 @@ export default function SeasonalSummaryScreen() {
                     isCurrentMonthRow && styles.tableRowHighlight,
                   ]}
                 >
-                  {/* Month */}
-                  <View style={{ flex: 1.2 }}>
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.tableCell}>{m.month}</Text>
                     {isCurrentMonthRow && (
                       <Text style={styles.currentTag}>now</Text>
                     )}
                   </View>
-                  {/* Rain mm + scarcity bar in one column */}
-                  <View style={{ flex: 1.5, paddingRight: 4 }}>
-                    <Text
-                      style={[
-                        styles.tableCellSmall,
-                        { color: colors.grayText, marginBottom: 2 },
-                      ]}
-                    >
-                      {m.rainfall > 0 ? `${m.rainfall}mm` : "—"}
-                    </Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <ProgressBar value={m.scarcityIndex} color={scColor} />
-                      <Text
-                        style={[
-                          styles.tableCellSmall,
-                          { color: scColor, minWidth: 20, textAlign: "right" },
-                        ]}
-                      >
-                        {m.scarcityIndex || "—"}
-                      </Text>
-                    </View>
-                  </View>
-                  {/* Irrigate */}
                   <Text
                     style={[
                       styles.tableCell,
-                      { flex: 1.5, textAlign: "right", color: colors.blue },
+                      { flex: 1.2, textAlign: "right" },
+                    ]}
+                  >
+                    {m.rainfall > 0 ? m.rainfall : "—"}
+                  </Text>
+                  <View
+                    style={{
+                      flex: 2,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <ProgressBar value={m.scarcityIndex} color={scColor} />
+                    <Text
+                      style={[
+                        styles.tableCellSmall,
+                        { color: scColor, width: 22, textAlign: "right" },
+                      ]}
+                    >
+                      {m.scarcityIndex || "—"}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.tableCell,
+                      { flex: 1.2, textAlign: "right", color: colors.blue },
                     ]}
                   >
                     {m.irrigationNeed > 0 ? `+${m.irrigationNeed}` : "—"}
                   </Text>
-                  {/* Status badge */}
-                  <View style={{ flex: 1, alignItems: "center" }}>
+                  <View style={{ flex: 0.8, alignItems: "center" }}>
                     {m.scarcityIndex > 0 ? (
                       <View
                         style={[

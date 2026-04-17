@@ -1,19 +1,14 @@
-import { AdminAccessDeniedModal } from "@/components/admin-access-denied-modal";
-import { fetchUserProfileByCredentials } from "@/lib/fetchUserProfileByCredentials";
-import { isAdminRole } from "@/lib/isAdminRole";
 import { fontScale, scale } from "@/lib/responsive";
-import {
-  invalidatePasswordResetCode,
-  isPasswordResetEdgeEnabled,
-  sendPasswordResetCode,
-  verifyPasswordResetCode,
-} from "@/lib/sendgrid";
+import { sendPasswordResetCode } from "@/lib/sendgrid";
 import {
   clearSavedCredentials,
   getSavedCredentials,
   saveCredentials,
   saveLoggedInEmail,
 } from "@/lib/storage";
+import { AdminAccessDeniedModal } from "@/components/admin-access-denied-modal";
+import { fetchUserProfileByCredentials } from "@/lib/fetchUserProfileByCredentials";
+import { isAdminRole } from "@/lib/isAdminRole";
 import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
 import * as Crypto from "expo-crypto";
@@ -75,11 +70,6 @@ export default function LoginScreen() {
   const [forgotEmailMessageType, setForgotEmailMessageType] = useState<
     "success" | "error" | null
   >(null);
-  /** Client-side SendGrid only: code + expiry until Edge mode stores hashes in Supabase. */
-  const [pendingResetCode, setPendingResetCode] = useState<string | null>(null);
-  const [pendingResetExpiresAt, setPendingResetExpiresAt] = useState<
-    number | null
-  >(null);
   const [rememberMe, setRememberMe] = useState(false);
 
   // Load saved credentials on mount
@@ -107,10 +97,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!emailOrPhone || !password) {
-      Alert.alert(
-        "Missing Information",
-        "Please enter your email and password to continue.",
-      );
+      Alert.alert("Error", "Please fill in all fields");
       return;
     }
 
@@ -140,7 +127,7 @@ export default function LoginScreen() {
       if (!userProfile || typeof userProfile.email !== "string") {
         Alert.alert(
           "Login Failed",
-          "Incorrect email or password. Please try again..",
+          "Invalid email/phone number or password. Please check your credentials and try again.",
         );
         return;
       }
@@ -201,10 +188,7 @@ export default function LoginScreen() {
 
   const handleSendCode = async () => {
     if (!forgotEmail) {
-      Alert.alert(
-        "Missing Email",
-        "Please enter your email address to continue.",
-      );
+      Alert.alert("Error", "Please enter your email address");
       return;
     }
 
@@ -228,16 +212,9 @@ export default function LoginScreen() {
         return;
       }
 
-      if (isPasswordResetEdgeEnabled()) {
-        await sendPasswordResetCode(forgotEmail);
-        setPendingResetCode(null);
-        setPendingResetExpiresAt(null);
-      } else {
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-        setPendingResetCode(code);
-        setPendingResetExpiresAt(Date.now() + 10 * 60 * 1000);
-        await sendPasswordResetCode(forgotEmail, code);
-      }
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+      await sendPasswordResetCode(forgotEmail, code);
 
       setForgotStep(2);
       startCountdown();
@@ -250,90 +227,23 @@ export default function LoginScreen() {
     }
   };
 
-  const handleVerifyCode = async () => {
-    const entered = verificationCode.trim();
-    if (!entered) {
-      Alert.alert(
-        "Missing Verification Code",
-        "Please enter the 6-digit code sent to your email.",
-      );
-      return;
-    }
-    if (entered.length !== 6 || !/^\d{6}$/.test(entered)) {
-      Alert.alert("Missing Code", "Enter the 6-digit code sent to your email.");
+  const handleVerifyCode = () => {
+    if (!verificationCode) {
+      Alert.alert("Error", "Please enter the verification code");
       return;
     }
 
-    setLoading(true);
-    try {
-      if (isPasswordResetEdgeEnabled()) {
-        const ok = await verifyPasswordResetCode(forgotEmail, entered);
-        if (!ok) {
-          Alert.alert(
-            "Verification Failed",
-            "Invalid or expired verification code. Request a new code if needed.",
-          );
-          return;
-        }
-      } else {
-        if (!pendingResetCode || !pendingResetExpiresAt) {
-          Alert.alert(
-            "No Code Requested",
-            "Please request a verification code first using Send Code.",
-          );
-          return;
-        }
-        if (Date.now() > pendingResetExpiresAt) {
-          setPendingResetCode(null);
-          setPendingResetExpiresAt(null);
-          Alert.alert(
-            "Code Expired",
-            "This code has expired (10 minutes). Tap Resend Code to get a new one.",
-          );
-          return;
-        }
-        if (entered !== pendingResetCode) {
-          Alert.alert(
-            "Verification Failed",
-            "That code does not match. Check your email.",
-          );
-          return;
-        }
-      }
-
-      setForgotStep(3);
-    } catch (error: any) {
-      Alert.alert(
-        "Verification Failed",
-        error.message || "Could not verify the code. Please try again.",
-      );
-    } finally {
-      setLoading(false);
-    }
+    setForgotStep(3);
   };
 
   const handleResetPassword = async () => {
-    if (!newPassword && !confirmPassword) {
-      Alert.alert(
-        "Missing Fields",
-        "Please enter your new password and confirm it.",
-      );
-      return;
-    }
-    if (!newPassword) {
-      Alert.alert("Missing Password", "Please enter your new password.");
-      return;
-    }
-    if (!confirmPassword) {
-      Alert.alert("Missing Confirmation", "Please confirm your new password.");
+    if (!newPassword || !confirmPassword) {
+      Alert.alert("Error", "Please fill in all fields");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert(
-        "Passwords Don't Match",
-        "Your passwords do not match. Please re-enter and make sure both fields are identical.",
-      );
+      Alert.alert("Error", "Passwords do not match");
       return;
     }
 
@@ -351,16 +261,9 @@ export default function LoginScreen() {
 
       if (updateError) throw updateError;
 
-      if (isPasswordResetEdgeEnabled()) {
-        await invalidatePasswordResetCode(forgotEmail, verificationCode.trim());
-      } else {
-        setPendingResetCode(null);
-        setPendingResetExpiresAt(null);
-      }
-
       Alert.alert(
         "Success",
-        "Your password has been reset successfully. You can now log in with your new password.",
+        "Password has been reset. You can now log in with your new password.",
         [
           {
             text: "OK",
@@ -400,8 +303,6 @@ export default function LoginScreen() {
     setCountdown(0);
     setForgotEmailMessage(null);
     setForgotEmailMessageType(null);
-    setPendingResetCode(null);
-    setPendingResetExpiresAt(null);
   };
 
   return (
@@ -530,7 +431,9 @@ export default function LoginScreen() {
                     </Text>
                     <Link href="/UserManagement/signup" asChild>
                       <TouchableOpacity activeOpacity={0.7}>
-                        <Text style={styles.inlineFooterLink}>Sign Up</Text>
+                        <Text style={styles.inlineFooterLink}>
+                          Create Account
+                        </Text>
                       </TouchableOpacity>
                     </Link>
                   </View>
@@ -659,24 +562,13 @@ export default function LoginScreen() {
                       keyboardType="numeric"
                       maxLength={6}
                       textAlign="center"
-                      selection={
-                        verificationCode.length === 0
-                          ? { start: 0, end: 0 }
-                          : undefined
-                      }
                     />
                   </View>
                   <TouchableOpacity
-                    style={[
-                      styles.sendButton,
-                      loading && styles.sendButtonDisabled,
-                    ]}
+                    style={styles.sendButton}
                     onPress={handleVerifyCode}
-                    disabled={loading}
                   >
-                    <Text style={styles.sendButtonText}>
-                      {loading ? "Verifying..." : "Verify Code"}
-                    </Text>
+                    <Text style={styles.sendButtonText}>Verify Code</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.resendButton}
@@ -868,7 +760,7 @@ const styles = StyleSheet.create({
     paddingLeft: 48,
     paddingRight: 48,
     fontFamily: fonts.regular,
-    fontSize: 13,
+    fontSize: 12,
     color: "#000",
     backgroundColor: "#F8F8F8",
   },
@@ -885,8 +777,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   checkbox: {
-    width: 18,
-    height: 18,
+    width: 16,
+    height: 16,
     borderRadius: 4,
     borderWidth: 2,
     borderColor: colors.brandGrayBorder,
@@ -900,7 +792,7 @@ const styles = StyleSheet.create({
   },
   rememberMeText: {
     fontFamily: fonts.regular,
-    fontSize: 13,
+    fontSize: 12,
     color: "#000",
   },
   forgotWrapper: {
@@ -908,7 +800,7 @@ const styles = StyleSheet.create({
   },
   forgotText: {
     fontFamily: fonts.medium,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.brandBlue,
   },
   loginButton: {
@@ -918,7 +810,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     justifyContent: "center",
     alignItems: "center",
-    minHeight: 50,
+    minHeight: 45,
     shadowColor: colors.brandGreen,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -930,7 +822,7 @@ const styles = StyleSheet.create({
   },
   loginButtonText: {
     fontFamily: fonts.semibold,
-    fontSize: 13,
+    fontSize: 12,
     color: "#fff",
     textAlign: "center",
   },
@@ -943,12 +835,12 @@ const styles = StyleSheet.create({
   },
   inlineFooterText: {
     fontFamily: fonts.regular,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.brandGrayText,
   },
   inlineFooterLink: {
     fontFamily: fonts.medium,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.brandBlue,
   },
   loadingOverlay: {
