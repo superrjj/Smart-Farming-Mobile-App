@@ -14,7 +14,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import "react-native-reanimated";
 
 import { AlertOverrideProvider } from "@/components/alert-override-provider";
@@ -93,20 +93,6 @@ export default function RootLayout() {
             </Stack>
           </View>
 
-          <View
-            style={[
-              styles.footer,
-              {
-                backgroundColor: appColors.surfaceMuted,
-                borderTopColor: appColors.border,
-              },
-            ]}
-          >
-            <Text style={[styles.footerText, { color: appColors.subText }]}>
-              For project completion and continued support, please settle the remaining balance at your earliest convenience. Contact Us: Dev Harvee.
-            </Text>
-          </View>
-
           <StatusBar
             style={colorScheme === "dark" ? "light" : "dark"}
             backgroundColor={
@@ -122,15 +108,4 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   stackWrapper: { flex: 1 },
-  footer: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  footerText: {
-    fontSize: 12,
-    fontFamily: "Poppins_400Regular",
-    textAlign: "center",
-  },
 });

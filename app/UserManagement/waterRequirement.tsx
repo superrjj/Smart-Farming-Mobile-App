@@ -1,12 +1,14 @@
 import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -95,6 +97,52 @@ interface WaterRequirements {
 
 type RecommendedRange = { min: number; max: number; optimal: number };
 
+/** Warn when soil / temperature / humidity thresholds fall outside research-based ranges. */
+function collectThresholdWarnings(
+  soilMoistureMin: number,
+  soilMoistureMax: number,
+  temperatureMin: number,
+  temperatureMax: number,
+  humidityMin: number,
+  humidityMax: number,
+): string[] {
+  const lines: string[] = [];
+  const sm = STRING_BEANS_RECOMMENDATIONS.soilMoisture;
+  const tm = STRING_BEANS_RECOMMENDATIONS.temperature;
+  const hm = STRING_BEANS_RECOMMENDATIONS.humidity;
+  if (soilMoistureMin < sm.min || soilMoistureMin > sm.max) {
+    lines.push(
+      `Soil moisture minimum (${soilMoistureMin}%) is outside the recommended ${sm.min}–${sm.max}%.`,
+    );
+  }
+  if (soilMoistureMax < sm.min || soilMoistureMax > sm.max) {
+    lines.push(
+      `Soil moisture maximum (${soilMoistureMax}%) is outside the recommended ${sm.min}–${sm.max}%.`,
+    );
+  }
+  if (temperatureMin < tm.min || temperatureMin > tm.max) {
+    lines.push(
+      `Temperature minimum (${temperatureMin}°C) is outside the recommended ${tm.min}–${tm.max}°C.`,
+    );
+  }
+  if (temperatureMax < tm.min || temperatureMax > tm.max) {
+    lines.push(
+      `Temperature maximum (${temperatureMax}°C) is outside the recommended ${tm.min}–${tm.max}°C.`,
+    );
+  }
+  if (humidityMin < hm.min || humidityMin > hm.max) {
+    lines.push(
+      `Humidity minimum (${humidityMin}%) is outside the recommended ${hm.min}–${hm.max}%.`,
+    );
+  }
+  if (humidityMax < hm.min || humidityMax > hm.max) {
+    lines.push(
+      `Humidity maximum (${humidityMax}%) is outside the recommended ${hm.min}–${hm.max}%.`,
+    );
+  }
+  return lines;
+}
+
 function InputField({
   label,
   value,
@@ -121,6 +169,10 @@ function InputField({
       parsed >= recommended.min &&
       parsed <= recommended.max
     : true;
+  const hasWarning =
+    recommended && value.trim().length > 0 && !Number.isNaN(parsed)
+      ? !isWithinRecommended
+      : false;
 
   return (
     <View style={styles.inputGroup}>
@@ -139,20 +191,22 @@ function InputField({
           style={[
             styles.input,
             inputStyle,
-            !isWithinRecommended && styles.inputWarning,
+            hasWarning && styles.inputWarning,
           ]}
           value={value}
           onChangeText={onChange}
           keyboardType="numeric"
           placeholder={hint}
           placeholderTextColor={colors.grayText}
+          blurOnSubmit={false}
         />
         <Text style={styles.unitText}>{unit}</Text>
       </View>
       {description && <Text style={styles.descriptionText}>{description}</Text>}
-      {recommended && !isWithinRecommended && (
+      {hasWarning && recommended && (
         <Text style={styles.warningText}>
-          ⚠️ Value outside recommended range
+          ⚠️ Outside recommended range ({recommended.min}–{recommended.max}
+          {unit})
         </Text>
       )}
     </View>
@@ -182,6 +236,29 @@ function RangeInput({
   minHint: string;
   maxHint: string;
 }) {
+  const minParsed = Number(minValue.trim());
+  const maxParsed = Number(maxValue.trim());
+  const minValid =
+    minValue.trim().length > 0 && !Number.isNaN(minParsed);
+  const maxValid =
+    maxValue.trim().length > 0 && !Number.isNaN(maxParsed);
+
+  const orderInvalid =
+    minValid && maxValid && minParsed >= maxParsed;
+
+  const minOutOfRecommended =
+    recommended &&
+    minValid &&
+    (minParsed < recommended.min || minParsed > recommended.max);
+
+  const maxOutOfRecommended =
+    recommended &&
+    maxValid &&
+    (maxParsed < recommended.min || maxParsed > recommended.max);
+
+  const showRangeWarning =
+    recommended && (minOutOfRecommended || maxOutOfRecommended);
+
   return (
     <View style={styles.rangeGroup}>
       <View style={styles.inputHeader}>
@@ -189,7 +266,7 @@ function RangeInput({
         {recommended && (
           <View style={styles.recommendedBadge}>
             <Text style={styles.recommendedText}>
-              Optimal: {recommended.optimal} {unit}
+              {recommended.min}–{recommended.max} {unit}
             </Text>
           </View>
         )}
@@ -198,12 +275,16 @@ function RangeInput({
         <View style={styles.rangeInputContainer}>
           <Text style={styles.rangeLabel}>Min</Text>
           <TextInput
-            style={styles.rangeInput}
+            style={[
+              styles.rangeInput,
+              (orderInvalid || minOutOfRecommended) && styles.rangeInputWarning,
+            ]}
             value={minValue}
             onChangeText={onMinChange}
             keyboardType="numeric"
             placeholder={minHint}
             placeholderTextColor={colors.grayText}
+            blurOnSubmit={false}
           />
           <Text style={styles.rangeUnit}>{unit}</Text>
         </View>
@@ -213,16 +294,32 @@ function RangeInput({
         <View style={styles.rangeInputContainer}>
           <Text style={styles.rangeLabel}>Max</Text>
           <TextInput
-            style={styles.rangeInput}
+            style={[
+              styles.rangeInput,
+              (orderInvalid || maxOutOfRecommended) && styles.rangeInputWarning,
+            ]}
             value={maxValue}
             onChangeText={onMaxChange}
             keyboardType="numeric"
             placeholder={maxHint}
             placeholderTextColor={colors.grayText}
+            blurOnSubmit={false}
           />
           <Text style={styles.rangeUnit}>{unit}</Text>
         </View>
       </View>
+      {orderInvalid && (
+        <Text style={styles.warningText}>
+          ⚠️ Minimum must be less than maximum.
+        </Text>
+      )}
+      {showRangeWarning && recommended && !orderInvalid && (
+        <Text style={styles.warningText}>
+          ⚠️ One or both values are outside the recommended range (
+          {recommended.min}–{recommended.max}
+          {unit}).
+        </Text>
+      )}
       {description && <Text style={styles.descriptionText}>{description}</Text>}
     </View>
   );
@@ -235,6 +332,7 @@ export default function WaterRequirementScreen() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resetModalVisible, setResetModalVisible] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [requirements, setRequirements] = useState<WaterRequirements>({
     soilMoistureMin: "",
@@ -316,6 +414,75 @@ export default function WaterRequirementScreen() {
     }
   };
 
+  type WaterRequirementPayload = {
+    soilMoistureMin: number;
+    soilMoistureMax: number;
+    temperatureMin: number;
+    temperatureMax: number;
+    humidityMin: number;
+    humidityMax: number;
+    irrigationDuration: number;
+    irrigationFrequency: number;
+  };
+
+  const persistWaterRequirements = useCallback(
+    async (p: WaterRequirementPayload) => {
+      if (!userId) {
+        Alert.alert("Error", "User not found");
+        return;
+      }
+      setSaving(true);
+      try {
+        const { error } = await supabase.from("water_requirements").upsert(
+          {
+            user_id: userId,
+            soil_moisture_min: p.soilMoistureMin,
+            soil_moisture_max: p.soilMoistureMax,
+            temperature_min: p.temperatureMin,
+            temperature_max: p.temperatureMax,
+            humidity_min: p.humidityMin,
+            humidity_max: p.humidityMax,
+            irrigation_duration: p.irrigationDuration,
+            irrigation_frequency: p.irrigationFrequency,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: "user_id",
+          },
+        );
+
+        if (error) {
+          if (
+            error.code === "PGRST205" ||
+            error.message?.includes("Could not find the table")
+          ) {
+            Alert.alert(
+              "Table Not Found",
+              "The water_requirements table does not exist in the database. Please create it first using the SQL script in DATABASE_SCHEMA.md",
+              [{ text: "OK" }],
+            );
+          } else {
+            throw error;
+          }
+          return;
+        }
+
+        Alert.alert("Success", "Water requirements saved successfully!", [
+          { text: "OK", onPress: () => router.back() },
+        ]);
+      } catch (error: any) {
+        console.error("Error saving requirements:", error);
+        Alert.alert(
+          "Error",
+          error.message || "Failed to save water requirements",
+        );
+      } finally {
+        setSaving(false);
+      }
+    },
+    [userId, router],
+  );
+
   const handleSave = async () => {
     const parseValue = (value: string, label: string): number | null => {
       const trimmed = value.trim();
@@ -372,7 +539,6 @@ export default function WaterRequirementScreen() {
     );
     if (irrigationFrequency === null) return;
 
-    // Validation
     if (soilMoistureMin >= soilMoistureMax) {
       Alert.alert("Error", "Minimum soil moisture must be less than maximum");
       return;
@@ -404,92 +570,59 @@ export default function WaterRequirementScreen() {
       return;
     }
 
-    if (!userId) {
-      Alert.alert("Error", "User not found");
+    const payload: WaterRequirementPayload = {
+      soilMoistureMin,
+      soilMoistureMax,
+      temperatureMin,
+      temperatureMax,
+      humidityMin,
+      humidityMax,
+      irrigationDuration,
+      irrigationFrequency,
+    };
+
+    const thresholdWarnings = collectThresholdWarnings(
+      soilMoistureMin,
+      soilMoistureMax,
+      temperatureMin,
+      temperatureMax,
+      humidityMin,
+      humidityMax,
+    );
+
+    if (thresholdWarnings.length > 0) {
+      Alert.alert(
+        "Threshold warning",
+        `${thresholdWarnings.join("\n\n")}\n\nYou can adjust these values or save anyway.`,
+        [
+          { text: "Review", style: "cancel" },
+          {
+            text: "Save anyway",
+            onPress: () => {
+              void persistWaterRequirements(payload);
+            },
+          },
+        ],
+      );
       return;
     }
 
-    setSaving(true);
-    try {
-      const { error } = await supabase.from("water_requirements").upsert(
-        {
-          user_id: userId,
-          soil_moisture_min: soilMoistureMin,
-          soil_moisture_max: soilMoistureMax,
-          temperature_min: temperatureMin,
-          temperature_max: temperatureMax,
-          humidity_min: humidityMin,
-          humidity_max: humidityMax,
-          irrigation_duration: irrigationDuration,
-          irrigation_frequency: irrigationFrequency,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "user_id",
-        },
-      );
-
-      if (error) {
-        // Check if table doesn't exist
-        if (
-          error.code === "PGRST205" ||
-          error.message?.includes("Could not find the table")
-        ) {
-          Alert.alert(
-            "Table Not Found",
-            "The water_requirements table does not exist in the database. Please create it first using the SQL script in DATABASE_SCHEMA.md",
-            [{ text: "OK" }],
-          );
-        } else {
-          throw error;
-        }
-        return;
-      }
-
-      Alert.alert("Success", "Water requirements saved successfully!", [
-        { text: "OK", onPress: () => router.back() },
-      ]);
-    } catch (error: any) {
-      console.error("Error saving requirements:", error);
-      Alert.alert(
-        "Error",
-        error.message || "Failed to save water requirements",
-      );
-    } finally {
-      setSaving(false);
-    }
+    await persistWaterRequirements(payload);
   };
 
-  const handleResetToRecommended = () => {
-    Alert.alert(
-      "Reset to Recommended",
-      "Are you sure you want to reset all values to recommended settings for string beans?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Reset",
-          onPress: () => {
-            setRequirements({
-              soilMoistureMin:
-                STRING_BEANS_RECOMMENDATIONS.soilMoisture.min.toString(),
-              soilMoistureMax:
-                STRING_BEANS_RECOMMENDATIONS.soilMoisture.max.toString(),
-              temperatureMin:
-                STRING_BEANS_RECOMMENDATIONS.temperature.min.toString(),
-              temperatureMax:
-                STRING_BEANS_RECOMMENDATIONS.temperature.max.toString(),
-              humidityMin: STRING_BEANS_RECOMMENDATIONS.humidity.min.toString(),
-              humidityMax: STRING_BEANS_RECOMMENDATIONS.humidity.max.toString(),
-              irrigationDuration:
-                STRING_BEANS_RECOMMENDATIONS.irrigationDuration.optimal.toString(),
-              irrigationFrequency:
-                STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.optimal.toString(),
-            });
-          },
-        },
-      ],
-    );
-  };
+  const clearAllRequirementFields = useCallback(() => {
+    setRequirements({
+      soilMoistureMin: "",
+      soilMoistureMax: "",
+      temperatureMin: "",
+      temperatureMax: "",
+      humidityMin: "",
+      humidityMax: "",
+      irrigationDuration: "",
+      irrigationFrequency: "",
+    });
+    setResetModalVisible(false);
+  }, []);
 
   // InputField and RangeInput are declared at module scope to avoid TextInput
   // focus loss (keyboard dismiss) on each keystroke.
@@ -520,12 +653,18 @@ export default function WaterRequirementScreen() {
           >
             <FontAwesome name="chevron-left" size={18} color={colors.dark} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Water Requirements</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            Water Requirements
+          </Text>
           <TouchableOpacity
-            onPress={handleResetToRecommended}
+            onPress={() => setResetModalVisible(true)}
             style={styles.resetButton}
+            hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+            accessibilityRole="button"
+            accessibilityLabel="Clear all fields to enter new water requirements"
           >
-            <FontAwesome name="refresh" size={18} color={colors.primary} />
+            <FontAwesome name="eraser" size={15} color={colors.primary} />
+            <Text style={styles.resetButtonLabel}>Clear</Text>
           </TouchableOpacity>
         </View>
 
@@ -671,6 +810,48 @@ export default function WaterRequirementScreen() {
             )}
           </TouchableOpacity>
         </ScrollView>
+
+        <Modal
+          visible={resetModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setResetModalVisible(false)}
+        >
+          <Pressable
+            style={styles.resetModalBackdrop}
+            onPress={() => setResetModalVisible(false)}
+          >
+            <Pressable
+              style={styles.resetModalCard}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.resetModalIconWrap}>
+                <FontAwesome name="eraser" size={22} color={colors.primary} />
+              </View>
+              <Text style={styles.resetModalTitle}>Clear all fields?</Text>
+              <Text style={styles.resetModalMessage}>
+                All values in this form will be cleared so you can enter new water
+                requirements. This does not delete saved data until you tap Save.
+              </Text>
+              <View style={styles.resetModalActions}>
+                <TouchableOpacity
+                  style={styles.resetModalCancel}
+                  onPress={() => setResetModalVisible(false)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.resetModalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.resetModalConfirm}
+                  onPress={clearAllRequirementFields}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.resetModalConfirmText}>Clear all</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -706,15 +887,106 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.grayBorder,
   },
   backButton: {
-    padding: 8,
+    width: 40,
+    paddingVertical: 8,
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
+    flex: 1,
     fontFamily: fonts.semibold,
     fontSize: 16,
     color: colors.dark,
+    textAlign: "center",
+    marginHorizontal: 4,
   },
   resetButton: {
-    padding: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    minWidth: 84,
+    borderRadius: 10,
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+  },
+  resetButtonLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    color: colors.primaryDark,
+  },
+  resetModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  resetModalCard: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+  },
+  resetModalIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#ECFDF5",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginBottom: 12,
+  },
+  resetModalTitle: {
+    fontFamily: fonts.semibold,
+    fontSize: 17,
+    color: colors.dark,
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  resetModalMessage: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    color: colors.grayText,
+    lineHeight: 21,
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  resetModalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 18,
+  },
+  resetModalCancel: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.grayBorder,
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+  },
+  resetModalCancelText: {
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: "#334155",
+  },
+  resetModalConfirm: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 10,
+    alignItems: "center",
+    backgroundColor: colors.primary,
+  },
+  resetModalConfirmText: {
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: "#fff",
   },
   scroll: {
     flex: 1,
@@ -815,8 +1087,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   inputWarning: {
-    borderColor: colors.grayBorder,
-    backgroundColor: colors.white,
+    borderColor: colors.warning,
+    backgroundColor: "#FFFBEB",
+  },
+  rangeInputWarning: {
+    borderColor: colors.warning,
+    backgroundColor: "#FFFBEB",
   },
   unitText: {
     fontFamily: fonts.medium,
