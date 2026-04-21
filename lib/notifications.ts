@@ -168,6 +168,45 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   }
 }
 
+export async function scheduleAdminRemarkNotification(
+  text: string,
+  dateKey?: string | null,
+): Promise<string | null> {
+  const body = text.trim();
+  if (!body) return null;
+
+  try {
+    const granted = await requestNotificationPermissions();
+    if (!granted) return null;
+
+    const Notifications = await ensureNotificationHandler();
+    if (!Notifications) return null;
+
+    return await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Admin Remark",
+        body,
+        sound: true,
+        ...(Platform.OS === "android" && {
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+          channelId: "irrigation-reminders",
+        }),
+        data: {
+          type: "admin_remark",
+          date_key: dateKey ?? null,
+        },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 1,
+      },
+    });
+  } catch (error) {
+    console.error("Error scheduling admin remark notification:", error);
+    return null;
+  }
+}
+
 /** Philippines (PHT): UTC+8, no DST — irrigation times are interpreted as Manila civil time. */
 const PHILIPPINES_OFFSET = "+08:00";
 

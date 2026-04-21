@@ -85,7 +85,11 @@ function getWeatherDescription(code: number): string {
   return "Cloudy";
 }
 
-function formatScheduleDateOnly(day: number, month: number, year: number): string {
+function formatScheduleDateOnly(
+  day: number,
+  month: number,
+  year: number,
+): string {
   const mm = String(month).padStart(2, "0");
   const dd = String(day).padStart(2, "0");
   return `${mm}/${dd}/${year}`;
@@ -401,7 +405,7 @@ export default function DashboardScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<
     {
-      id: number;
+      id: string;
       type: string;
       title: string;
       message: string;
@@ -409,6 +413,7 @@ export default function DashboardScreen() {
       created_at: string | null;
     }[]
   >([]);
+  const [readRemarkIds, setReadRemarkIds] = useState<string[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [selectedRecommendation, setSelectedRecommendation] = useState<{
     title: string;
@@ -565,9 +570,7 @@ export default function DashboardScreen() {
         .eq("is_active", true)
         .limit(10);
 
-      const scheduleIds = [
-        ...(userSchedules ?? []).map((s) => String(s.id)),
-      ];
+      const scheduleIds = [...(userSchedules ?? []).map((s) => String(s.id))];
 
       if (scheduleIds.length === 0) {
         const { data: userSchedulesAny } = await supabase
@@ -589,7 +592,9 @@ export default function DashboardScreen() {
 
       const { data: scheduleRows } = await supabase
         .from("irrigation_scheduled_dates")
-        .select("schedule_id, time, scheduled_date, day, month, year, approval_status")
+        .select(
+          "schedule_id, time, scheduled_date, day, month, year, approval_status",
+        )
         .in("schedule_id", scheduleIds)
         .gte("scheduled_date", todayYmd)
         .order("scheduled_date", { ascending: true })
@@ -606,7 +611,9 @@ export default function DashboardScreen() {
         .find((r) => {
           const dateValue =
             String(r.scheduled_date ?? "") ||
-            toYmdLocal(new Date(Number(r.year), Number(r.month) - 1, Number(r.day)));
+            toYmdLocal(
+              new Date(Number(r.year), Number(r.month) - 1, Number(r.day)),
+            );
           if (dateValue > todayYmd) return true;
           if (dateValue < todayYmd) return false;
           return timeToMinutes(String(r.time)) > currentMinutes;
@@ -696,32 +703,88 @@ export default function DashboardScreen() {
   const fetchNotifications = useCallback(async () => {
     if (!userId) return;
     try {
-      const { data, error } = await supabase
+      const { data: recommendationRows, error } = await supabase
         .from("notifications")
         .select("id, type, title, message, is_read, created_at")
         .eq("user_id", userId)
         .eq("type", "recommendation")
         .order("created_at", { ascending: false })
         .limit(20);
-      if (!error && data) {
-        setNotifications(
-          data.map((n) => ({
-            id: n.id as number,
-            type: n.type as string,
-            title: n.title as string,
-            message: n.message as string,
-            is_read: n.is_read as boolean | null,
-            created_at: (n.created_at as string | null) ?? null,
-          })),
-        );
+      if (!error && recommendationRows) {
+        const recommendationItems = recommendationRows.map((n) => ({
+          id: `recommendation-${String(n.id)}`,
+          type: n.type as string,
+          title: n.title as string,
+          message: n.message as string,
+          is_read: n.is_read as boolean | null,
+          created_at: (n.created_at as string | null) ?? null,
+        }));
+
+        const { data: scheduleRows } = await supabase
+          .from("irrigation_schedules")
+          .select("id")
+          .eq("user_id", userId);
+        const scheduleIds = (scheduleRows ?? []).map((row) => String(row.id));
+
+        let remarkItems: {
+          id: string;
+          type: string;
+          title: string;
+          message: string;
+          is_read: boolean | null;
+          created_at: string | null;
+        }[] = [];
+
+        if (scheduleIds.length > 0) {
+          const { data: scheduledDateRows } = await supabase
+            .from("irrigation_scheduled_dates")
+            .select("day, month, year")
+            .in("schedule_id", scheduleIds);
+          const userDateKeys = new Set(
+            (scheduledDateRows ?? []).map(
+              (row) => `${row.year}-${row.month}-${row.day}`,
+            ),
+          );
+
+          if (userDateKeys.size > 0) {
+            const { data: remarkRows } = await supabase
+              .from("irrigation_remarks")
+              .select("date_key, text, created_at")
+              .order("created_at", { ascending: false })
+              .limit(20);
+            remarkItems = (remarkRows ?? [])
+              .filter((row) => userDateKeys.has(String(row.date_key)))
+              .map((row) => {
+                const id = `remark-${String(row.date_key)}`;
+                return {
+                  id,
+                  type: "admin_remark",
+                  title: "Admin Remark",
+                  message: String(row.text ?? ""),
+                  is_read: readRemarkIds.includes(id),
+                  created_at: (row.created_at as string | null) ?? null,
+                };
+              });
+          }
+        }
+
+        const merged = [...recommendationItems, ...remarkItems]
+          .sort(
+            (a, b) =>
+              new Date(b.created_at ?? 0).getTime() -
+              new Date(a.created_at ?? 0).getTime(),
+          )
+          .slice(0, 20);
+        setNotifications(merged);
         setUnreadCount(
-          data.filter((n) => n.is_read === false || n.is_read === null).length,
+          merged.filter((n) => n.is_read === false || n.is_read === null)
+            .length,
         );
       }
     } catch (error) {
       console.error("Error fetching notifications:", error);
     }
-  }, [userId]);
+  }, [readRemarkIds, userId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -753,15 +816,36 @@ export default function DashboardScreen() {
             created_at: string | null;
           };
           if (row.type !== "recommendation") return;
-          setNotifications((prev) => [row, ...prev.slice(0, 19)]);
+          setNotifications((prev) => [
+            {
+              id: `recommendation-${String(row.id)}`,
+              type: row.type,
+              title: row.title,
+              message: row.message,
+              is_read: row.is_read,
+              created_at: row.created_at,
+            },
+            ...prev.slice(0, 19),
+          ]);
           setUnreadCount((prev) => prev + 1);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "irrigation_remarks",
+        },
+        () => {
+          void fetchNotifications();
         },
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, [fetchNotifications, userId]);
 
   const markAllAsRead = useCallback(async () => {
     if (!userId) return;
@@ -773,21 +857,40 @@ export default function DashboardScreen() {
         .eq("type", "recommendation")
         .neq("is_read", true);
       if (error) throw error;
+      const unreadRemarkIds = notifications
+        .filter(
+          (n) =>
+            n.type === "admin_remark" &&
+            (n.is_read === false || n.is_read === null),
+        )
+        .map((n) => n.id);
+      if (unreadRemarkIds.length > 0) {
+        setReadRemarkIds((prev) => [...new Set([...prev, ...unreadRemarkIds])]);
+      }
       await fetchNotifications();
     } catch (error) {
       console.error("Error marking notifications as read:", error);
       Alert.alert("Error", "Failed to mark notifications as read.");
     }
-  }, [fetchNotifications, userId]);
+  }, [fetchNotifications, notifications, userId]);
 
   const markNotificationAsRead = useCallback(
-    async (id: number) => {
+    async (id: string, type: string) => {
       if (!userId) return;
       try {
+        if (type === "admin_remark") {
+          if (!readRemarkIds.includes(id)) {
+            setReadRemarkIds((prev) => [...prev, id]);
+            setUnreadCount((prev) => Math.max(0, prev - 1));
+          }
+          return;
+        }
+        const rawId = Number(id.replace("recommendation-", ""));
+        if (!Number.isFinite(rawId)) return;
         const { error } = await supabase
           .from("notifications")
           .update({ is_read: true })
-          .eq("id", id)
+          .eq("id", rawId)
           .eq("user_id", userId);
         if (error) throw error;
         await fetchNotifications();
@@ -796,7 +899,7 @@ export default function DashboardScreen() {
         Alert.alert("Error", "Failed to mark notification as read.");
       }
     },
-    [fetchNotifications, userId],
+    [fetchNotifications, readRemarkIds, userId],
   );
 
   const handleLogout = () => {
@@ -969,9 +1072,15 @@ export default function DashboardScreen() {
             <View style={styles.heroLeft}>
               {loadingName ? (
                 <>
-                  <View style={[styles.skeletonBlock, styles.heroEyebrowSkeleton]} />
-                  <View style={[styles.skeletonBlock, styles.heroGreetingSkeleton]} />
-                  <View style={[styles.skeletonBlock, styles.heroSubtitleSkeleton]} />
+                  <View
+                    style={[styles.skeletonBlock, styles.heroEyebrowSkeleton]}
+                  />
+                  <View
+                    style={[styles.skeletonBlock, styles.heroGreetingSkeleton]}
+                  />
+                  <View
+                    style={[styles.skeletonBlock, styles.heroSubtitleSkeleton]}
+                  />
                 </>
               ) : (
                 <>
@@ -1029,7 +1138,10 @@ export default function DashboardScreen() {
                   color={irrigStatus.textColor}
                 />
                 <Text
-                  style={[styles.heroChipText, { color: irrigStatus.textColor }]}
+                  style={[
+                    styles.heroChipText,
+                    { color: irrigStatus.textColor },
+                  ]}
                 >
                   {irrigStatus.label}
                 </Text>
@@ -1057,8 +1169,12 @@ export default function DashboardScreen() {
             <Text style={styles.cardTitle}>Field Conditions</Text>
             {sensorLoading ? (
               <View style={styles.lastUpdatedSkeletonRow}>
-                <View style={[styles.skeletonBlock, styles.lastUpdatedSkeletonIcon]} />
-                <View style={[styles.skeletonBlock, styles.lastUpdatedSkeletonText]} />
+                <View
+                  style={[styles.skeletonBlock, styles.lastUpdatedSkeletonIcon]}
+                />
+                <View
+                  style={[styles.skeletonBlock, styles.lastUpdatedSkeletonText]}
+                />
               </View>
             ) : lastUpdated ? (
               <View
@@ -1095,7 +1211,10 @@ export default function DashboardScreen() {
                       style={[styles.skeletonBlock, styles.gaugeSkeletonLabel]}
                     />
                     <View
-                      style={[styles.skeletonBlock, styles.gaugeSkeletonSubLabel]}
+                      style={[
+                        styles.skeletonBlock,
+                        styles.gaugeSkeletonSubLabel,
+                      ]}
                     />
                   </View>
                 ))}
@@ -1127,11 +1246,7 @@ export default function DashboardScreen() {
                   }
                   unit="°C"
                   icon={
-                    <FontAwesome
-                      name="thermometer"
-                      size={14}
-                      color="#F97316"
-                    />
+                    <FontAwesome name="thermometer" size={14} color="#F97316" />
                   }
                 />
                 <CircularGauge
@@ -1162,11 +1277,31 @@ export default function DashboardScreen() {
               <View style={styles.forecastLoadingWrap}>
                 {[0, 1, 2, 3].map((key) => (
                   <View key={key} style={styles.forecastSkeletonCard}>
-                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineSm]} />
-                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineXs]} />
+                    <View
+                      style={[
+                        styles.skeletonBlock,
+                        styles.forecastSkeletonLineSm,
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.skeletonBlock,
+                        styles.forecastSkeletonLineXs,
+                      ]}
+                    />
                     <View style={styles.forecastSkeletonEmoji} />
-                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineSm]} />
-                    <View style={[styles.skeletonBlock, styles.forecastSkeletonLineMd]} />
+                    <View
+                      style={[
+                        styles.skeletonBlock,
+                        styles.forecastSkeletonLineSm,
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.skeletonBlock,
+                        styles.forecastSkeletonLineMd,
+                      ]}
+                    />
                   </View>
                 ))}
               </View>
@@ -1202,7 +1337,7 @@ export default function DashboardScreen() {
             />
             <View style={styles.notifPanel}>
               <View style={styles.notifHeader}>
-                <Text style={styles.notifTitle}>Recommendations</Text>
+                <Text style={styles.notifTitle}>Notifications</Text>
                 <TouchableOpacity onPress={() => setNotifOpen(false)}>
                   <FontAwesome name="times" size={16} color="#6B7280" />
                 </TouchableOpacity>
@@ -1218,7 +1353,7 @@ export default function DashboardScreen() {
                     activeOpacity={0.8}
                     onPress={async () => {
                       if (n.is_read === false || n.is_read === null) {
-                        await markNotificationAsRead(n.id);
+                        await markNotificationAsRead(n.id, n.type);
                       }
                       setSelectedRecommendation({
                         title: n.title,
@@ -1231,9 +1366,15 @@ export default function DashboardScreen() {
                     ]}
                   >
                     <FontAwesome
-                      name="leaf"
+                      name={n.type === "admin_remark" ? "comment" : "leaf"}
                       size={14}
-                      color={n.is_read ? "#6B7280" : colors.brandGreen}
+                      color={
+                        n.is_read
+                          ? "#6B7280"
+                          : n.type === "admin_remark"
+                            ? colors.purple
+                            : colors.brandGreen
+                      }
                     />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.notifTitleText}>{n.title}</Text>
@@ -1307,7 +1448,9 @@ export default function DashboardScreen() {
                 <FontAwesome
                   name={autoIrrigationPendingOn ? "toggle-on" : "toggle-off"}
                   size={22}
-                  color={autoIrrigationPendingOn ? colors.brandGreen : "#64748B"}
+                  color={
+                    autoIrrigationPendingOn ? colors.brandGreen : "#64748B"
+                  }
                 />
               </View>
               <Text style={styles.popupTitle}>
@@ -1337,7 +1480,9 @@ export default function DashboardScreen() {
                       ? styles.autoIrrigationModalConfirmOn
                       : styles.autoIrrigationModalConfirmOff,
                   ]}
-                  onPress={() => applyAutoIrrigationMode(autoIrrigationPendingOn)}
+                  onPress={() =>
+                    applyAutoIrrigationMode(autoIrrigationPendingOn)
+                  }
                   activeOpacity={0.85}
                 >
                   <Text style={styles.autoIrrigationModalConfirmText}>
@@ -2009,6 +2154,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#374151",
     lineHeight: 18,
+    textAlign: "justify",
   },
   notifTitleText: {
     fontFamily: fonts.semibold,
@@ -2054,6 +2200,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#374151",
     lineHeight: 20,
+    textAlign: "justify",
   },
   popupOkButton: {
     marginTop: 16,
