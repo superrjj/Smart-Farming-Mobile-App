@@ -283,6 +283,74 @@ export default function IrrigationScheduleScreen() {
   const [temperature, setTemperature] = useState(0);
   const [humidity, setHumidity] = useState(0);
 
+  // ─── Admin Remarks ────────────────────────────────────────────────────────
+  const [adminRemarks, setAdminRemarks] = useState<Map<string, string>>(
+    new Map(),
+  );
+
+  const fetchAdminRemarks = async () => {
+    if (!currentScheduleId) return;
+    try {
+      // 1. Get all date_keys belonging to the current user's schedule
+      const { data: userDates, error: datesError } = await supabase
+        .from("irrigation_scheduled_dates")
+        .select("day, month, year")
+        .eq("schedule_id", currentScheduleId);
+
+      if (datesError) throw datesError;
+
+      if (!userDates || userDates.length === 0) {
+        setAdminRemarks(new Map());
+        return;
+      }
+
+      // Build a Set of date_keys for this user
+      const userDateKeys = new Set(
+        userDates.map(
+          (d: { day: number; month: number; year: number }) =>
+            `${d.year}-${d.month}-${d.day}`,
+        ),
+      );
+
+      // 2. Fetch all remarks then filter to only this user's date_keys
+      const { data, error } = await supabase
+        .from("irrigation_remarks")
+        .select("date_key, text");
+
+      if (error) throw error;
+
+      const map = new Map<string, string>();
+      (data || []).forEach((r: { date_key: string; text: string }) => {
+        if (userDateKeys.has(r.date_key)) {
+          map.set(r.date_key, r.text);
+        }
+      });
+      setAdminRemarks(map);
+    } catch (error) {
+      console.error("Error fetching admin remarks:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (!currentScheduleId) return;
+    fetchAdminRemarks();
+    const channel = supabase
+      .channel("irrigation-remarks-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "irrigation_remarks" },
+        () => {
+          void fetchAdminRemarks();
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [currentScheduleId]);
+  // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+
   const fetchLatestSensorData = async () => {
     try {
       const sensorIds = [1, 2, 3];
@@ -392,7 +460,9 @@ export default function IrrigationScheduleScreen() {
   }, [email]);
 
   useEffect(() => {
-    if (userId && !currentScheduleId) fetchOrCreateSchedule();
+    if (userId && !currentScheduleId) {
+      fetchOrCreateSchedule();
+    }
   }, [userId]);
 
   useEffect(() => {
@@ -756,8 +826,19 @@ export default function IrrigationScheduleScreen() {
   const handleDateClick = (day: number) => {
     const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
     const scheduled = dateSchedules.get(dateKey);
+    const remarkKey = `${currentYear}-${currentMonth + 1}-${day}`;
+    const hasRemark = adminRemarks.has(remarkKey);
     if (scheduled) {
       setSelectedScheduleInfo(scheduled);
+      setSelectedDateKey(dateKey);
+      setScheduleInfoModalVisible(true);
+    } else if (hasRemark) {
+      setSelectedScheduleInfo({
+        day,
+        month: currentMonth + 1,
+        year: currentYear,
+        schedules: [],
+      });
       setSelectedDateKey(dateKey);
       setScheduleInfoModalVisible(true);
     }
@@ -826,6 +907,29 @@ export default function IrrigationScheduleScreen() {
     }
     if (isSubmitting) return; // guard against double-tap
     setIsSubmitting(true);
+
+    try {
+      const { data: scheduleCheck, error: scheduleCheckError } = await supabase
+        .from("irrigation_schedules")
+        .select("id")
+        .eq("id", currentScheduleId)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (scheduleCheckError || !scheduleCheck) {
+        // Schedule was deleted or deactivated — recreate it
+        setCurrentScheduleId(null);
+        await fetchOrCreateSchedule();
+        setIsSubmitting(false);
+        Alert.alert("Retry", "Schedule was reset. Please try adding again.");
+        return;
+      }
+    } catch {
+      setIsSubmitting(false);
+      Alert.alert("Error", "Could not verify schedule. Please try again.");
+      return;
+    }
+
     try {
       const insertData: Record<string, unknown>[] = [];
       const skipped: string[] = [];
@@ -1285,6 +1389,9 @@ export default function IrrigationScheduleScreen() {
                 const isSelected = day !== null && isDateScheduled(day);
                 const isTodayDate = day !== null && isToday(day);
                 const isPast = day !== null && isPastDate(day);
+                const hasRemark =
+                  day !== null &&
+                  adminRemarks.has(`${currentYear}-${currentMonth + 1}-${day}`);
                 return (
                   <TouchableOpacity
                     key={index}
@@ -1295,7 +1402,12 @@ export default function IrrigationScheduleScreen() {
                     ]}
                     onPress={() => day && handleDateClick(day)}
                     disabled={
-                      day === null || (isPast && !isDateScheduled(day ?? 0))
+                      day === null ||
+                      (isPast &&
+                        !isDateScheduled(day ?? 0) &&
+                        !adminRemarks.has(
+                          `${currentYear}-${currentMonth + 1}-${day}`,
+                        ))
                     }
                   >
                     <Text
@@ -1309,6 +1421,7 @@ export default function IrrigationScheduleScreen() {
                     >
                       {day || ""}
                     </Text>
+                    {hasRemark && <View style={styles.remarkDot} />}
                   </TouchableOpacity>
                 );
               })}
@@ -1336,6 +1449,12 @@ export default function IrrigationScheduleScreen() {
                   ]}
                 />
                 <Text style={styles.legendText}>Available</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View
+                  style={[styles.legendDot, { backgroundColor: colors.purple }]}
+                />
+                <Text style={styles.legendText}>Has remark</Text>
               </View>
             </View>
           )}
@@ -1718,7 +1837,10 @@ export default function IrrigationScheduleScreen() {
                           )
                         : rows;
 
-                  if (filteredRows.length === 0)
+                  const remarkKey = `${selectedScheduleInfo.year}-${selectedScheduleInfo.month}-${selectedScheduleInfo.day}`;
+                  const adminRemark = adminRemarks.get(remarkKey);
+
+                  if (filteredRows.length === 0 && !adminRemark)
                     return (
                       <View style={styles.scheduleInfoBody}>
                         <Text style={styles.noSchedulesText}>
@@ -1729,56 +1851,78 @@ export default function IrrigationScheduleScreen() {
 
                   return (
                     <View style={styles.scheduleInfoBody}>
-                      <View style={styles.infoRow}>
-                        <FontAwesome
-                          name="calendar"
-                          size={20}
-                          color={colors.primary}
-                        />
-                        <View style={styles.infoContent}>
-                          <Text style={styles.infoLabel}>Date</Text>
-                          <Text style={styles.infoValue}>
-                            {MONTHS[selectedScheduleInfo.month - 1]}{" "}
-                            {selectedScheduleInfo.day},{" "}
-                            {selectedScheduleInfo.year}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.infoRow}>
-                        <FontAwesome
-                          name="clock-o"
-                          size={20}
-                          color={colors.primary}
-                        />
-                        <View style={styles.infoContent}>
-                          <Text style={styles.infoLabel}>Time(s)</Text>
-                          <Text style={styles.infoHintPast}>
-                            Past dates/times are hidden.
-                          </Text>
-                          <View style={styles.timesList}>
-                            {filteredRows.map((schedule) => (
-                              <View key={schedule.id} style={styles.timeItem}>
-                                <Text style={styles.timeItemText}>
-                                  {schedule.time}
-                                </Text>
-                                <TouchableOpacity
-                                  style={styles.timeItemDeleteButton}
-                                  onPress={() =>
-                                    deleteScheduleDate(schedule.id)
-                                  }
-                                  accessibilityLabel="Delete schedule"
-                                >
-                                  <FontAwesome
-                                    name="times"
-                                    size={12}
-                                    color="#EF4444"
-                                  />
-                                </TouchableOpacity>
+                      {filteredRows.length > 0 && (
+                        <>
+                          <View style={styles.infoRow}>
+                            <FontAwesome
+                              name="calendar"
+                              size={20}
+                              color={colors.primary}
+                            />
+                            <View style={styles.infoContent}>
+                              <Text style={styles.infoLabel}>Date</Text>
+                              <Text style={styles.infoValue}>
+                                {MONTHS[selectedScheduleInfo.month - 1]}{" "}
+                                {selectedScheduleInfo.day},{" "}
+                                {selectedScheduleInfo.year}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={styles.infoRow}>
+                            <FontAwesome
+                              name="clock-o"
+                              size={20}
+                              color={colors.primary}
+                            />
+                            <View style={styles.infoContent}>
+                              <Text style={styles.infoLabel}>Time(s)</Text>
+                              <Text style={styles.infoHintPast}>
+                                Past dates/times are hidden.
+                              </Text>
+                              <View style={styles.timesList}>
+                                {filteredRows.map((schedule) => (
+                                  <View
+                                    key={schedule.id}
+                                    style={styles.timeItem}
+                                  >
+                                    <Text style={styles.timeItemText}>
+                                      {schedule.time}
+                                    </Text>
+                                    <TouchableOpacity
+                                      style={styles.timeItemDeleteButton}
+                                      onPress={() =>
+                                        deleteScheduleDate(schedule.id)
+                                      }
+                                      accessibilityLabel="Delete schedule"
+                                    >
+                                      <FontAwesome
+                                        name="times"
+                                        size={12}
+                                        color="#EF4444"
+                                      />
+                                    </TouchableOpacity>
+                                  </View>
+                                ))}
                               </View>
-                            ))}
+                            </View>
+                          </View>
+                        </>
+                      )}
+
+                      {/* ── Admin Remark Row ── */}
+                      {adminRemark && (
+                        <View style={styles.infoRow}>
+                          <FontAwesome
+                            name="comment"
+                            size={20}
+                            color={colors.purple}
+                          />
+                          <View style={styles.infoContent}>
+                            <Text style={styles.infoLabel}>Admin Remark</Text>
+                            <Text style={styles.infoValue}>{adminRemark}</Text>
                           </View>
                         </View>
-                      </View>
+                      )}
                     </View>
                   );
                 })()}
@@ -1957,6 +2101,15 @@ const styles = StyleSheet.create({
   todayText: { color: colors.accent, fontFamily: fonts.bold },
   pastDay: { backgroundColor: "#F7F7F7" },
   pastDayText: { color: "#D1D5DB" },
+  remarkDot: {
+    position: "absolute",
+    bottom: 3,
+    right: 3,
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.purple,
+  },
   legend: { flexDirection: "row", justifyContent: "center", gap: 24 },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
