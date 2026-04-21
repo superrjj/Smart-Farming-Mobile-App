@@ -168,6 +168,29 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   }
 }
 
+export async function getExpoPushToken(): Promise<string | null> {
+  try {
+    const granted = await requestNotificationPermissions();
+    if (!granted) return null;
+
+    const Notifications = await ensureNotificationHandler();
+    if (!Notifications) return null;
+
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+    if (!projectId) {
+      console.warn("[notifications] Missing EAS projectId for Expo push token.");
+      return null;
+    }
+
+    const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
+    return tokenResponse.data ?? null;
+  } catch (error) {
+    console.error("Error getting Expo push token:", error);
+    return null;
+  }
+}
+
 export async function scheduleAdminRemarkNotification(
   text: string,
   dateKey?: string | null,

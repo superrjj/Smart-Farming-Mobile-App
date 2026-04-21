@@ -196,3 +196,41 @@ Local invoke uses a different base URL unless you point the app at local Supabas
 ## Security note
 
 With **`verify_jwt = false`**, anyone who discovers the function URL can attempt requests. The function only emails addresses that exist in **`user_profiles`**. For production hardening, add rate limiting (e.g. DB table + timestamps) or CAPTCHA later.
+
+---
+
+## Admin remark push (works when app is closed)
+
+This repo includes:
+
+- `supabase/migrations/20260421103000_create_user_push_tokens.sql`
+- `supabase/functions/push-admin-remark/index.ts`
+
+### Deploy steps
+
+1. Apply migrations (creates `public.user_push_tokens` and enables RLS).
+2. Deploy function:
+
+```bash
+npm run supabase -- functions deploy register-push-token
+npm run supabase -- functions deploy push-admin-remark
+```
+
+3. Create a **Database Webhook** in Supabase Dashboard:
+   - Table: `public.irrigation_remarks`
+   - Events: `INSERT`, `UPDATE`
+   - URL: `https://<project-ref>.functions.supabase.co/push-admin-remark`
+   - HTTP method: `POST`
+
+Webhook payload includes the new row under `record`; the function reads `record.date_key` and `record.text`, finds matching users via irrigation schedules, resolves Expo tokens from `user_push_tokens`, and sends:
+
+- title: `Admin Remark`
+- body: `text` from DB
+
+The app now also stores each signed-in user's Expo push token in `user_push_tokens` from `app/UserManagement/_layout.tsx`.
+
+### RLS + anon-key architecture
+
+`user_push_tokens` now has RLS enabled with no client policies, so anon/authenticated clients cannot write directly.
+
+Token writes happen through `register-push-token` Edge Function, which validates `(userId, email)` against `user_profiles` before upserting via service role.

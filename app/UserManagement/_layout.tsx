@@ -1,5 +1,8 @@
 import { isAdminRole } from "@/lib/isAdminRole";
-import { scheduleAdminRemarkNotification } from "@/lib/notifications";
+import {
+  getExpoPushToken,
+  scheduleAdminRemarkNotification,
+} from "@/lib/notifications";
 import { clearAllStorage, getLoggedInEmail } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 import { Stack, useRouter } from "expo-router";
@@ -40,6 +43,7 @@ function parseDateKey(
 export default function UserManagementLayout() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [popup, setPopup] = useState<RecoPopup>(null);
   const appStateRef = useRef(AppState.currentState);
   const scheduleIdsRef = useRef<string[]>([]);
@@ -55,6 +59,7 @@ export default function UserManagementLayout() {
     const loadUser = async () => {
       const email = await getLoggedInEmail();
       if (!email) return;
+      setUserEmail(email);
       const { data } = await supabase
         .from("user_profiles")
         .select("id")
@@ -79,6 +84,25 @@ export default function UserManagementLayout() {
     };
 
     void loadScheduleIds();
+
+    void (async () => {
+      const token = await getExpoPushToken();
+      if (!token || !userEmail || cancelled) return;
+      const { error } = await supabase.functions.invoke("register-push-token", {
+        body: {
+          userId,
+          email: userEmail,
+          token,
+          platform: "expo",
+        },
+      });
+      if (error) {
+        console.warn(
+          "[push] Failed to save user push token via function:",
+          error.message,
+        );
+      }
+    })();
 
     const channel = supabase
       .channel(`um-global-notifications-${userId}`)
@@ -128,7 +152,7 @@ export default function UserManagementLayout() {
       scheduleIdsRef.current = [];
       void supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, [userEmail, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -186,15 +210,13 @@ export default function UserManagementLayout() {
       const title = "Admin Remark";
       const body = row.text ?? "";
       if (!body) return;
+
+      // Always schedule a push so admin remarks behave like notification events
+      // even when the app is currently open.
+      void scheduleAdminRemarkNotification(body, row.date_key);
+
       if (appStateRef.current === "active") {
         setPopup({ title, message: body });
-        return;
-      }
-
-      try {
-        await scheduleAdminRemarkNotification(body, row.date_key);
-      } catch {
-        // Keep app stable if notifications are unavailable (e.g. Expo Go)
       }
     };
 

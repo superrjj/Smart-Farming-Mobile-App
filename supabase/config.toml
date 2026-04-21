@@ -27,3 +27,10 @@ verify_jwt = false
 
 [functions.invalidate-password-reset]
 verify_jwt = false
+
+# Database webhook calls this function server-to-server.
+[functions.push-admin-remark]
+verify_jwt = false
+
+[functions.register-push-token]
+verify_jwt = false
