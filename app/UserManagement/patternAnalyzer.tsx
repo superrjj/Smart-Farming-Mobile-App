@@ -627,19 +627,140 @@ const PercentLineChartJS = ({
   );
 };
 
+const DualAxisLineChartJS = ({
+  labels,
+  left,
+  right,
+}: {
+  labels: string[];
+  left: { values: number[]; color: string; label: string; unit?: string };
+  right: { values: number[]; color: string; label: string; unit?: string };
+}) => {
+  if (!labels.length) return null;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: transparent; }
+      </style>
+    </head>
+    <body>
+      <div style="position:relative; width:100%; height:185px;">
+        <canvas id="dualLine"></canvas>
+      </div>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+      <script>
+        new Chart(document.getElementById('dualLine'), {
+          type: 'line',
+          data: {
+            labels: ${JSON.stringify(labels)},
+            datasets: [
+              {
+                data: ${JSON.stringify(left.values)},
+                borderColor: '${left.color}',
+                borderWidth: 2.5,
+                pointRadius: 2.5,
+                pointHoverRadius: 3,
+                tension: 0.35,
+                fill: false,
+                yAxisID: 'yLeft'
+              },
+              {
+                data: ${JSON.stringify(right.values)},
+                borderColor: '${right.color}',
+                borderWidth: 2.5,
+                pointRadius: 2.5,
+                pointHoverRadius: 3,
+                tension: 0.35,
+                fill: false,
+                yAxisID: 'yRight'
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => {
+                    const dsIndex = ctx.datasetIndex;
+                    const v = ctx.raw;
+                    if (dsIndex === 0) return '${left.label}: ' + v + '${left.unit ?? ""}';
+                    return '${right.label}: ' + v + '${right.unit ?? ""}';
+                  }
+                }
+              }
+            },
+            scales: {
+              yLeft: {
+                position: 'left',
+                ticks: { color: '#334155', font: { size: 11 } },
+                grid: { color: 'rgba(100,116,139,0.18)' },
+                border: { display: false }
+              },
+              yRight: {
+                position: 'right',
+                ticks: { color: '#334155', font: { size: 11 } },
+                grid: { drawOnChartArea: false },
+                border: { display: false }
+              },
+              x: {
+                ticks: {
+                  maxTicksLimit: 6,
+                  color: '#334155',
+                  font: { size: 10 },
+                  maxRotation: 0
+                },
+                grid: { color: 'rgba(100,116,139,0.10)', lineWidth: 1 },
+                border: { display: false }
+              }
+            }
+          }
+        });
+      </script>
+    </body>
+    </html>
+  `;
+
+  return (
+    <View style={styles.chartShell}>
+      <WebView
+        source={{ html }}
+        style={{ height: 185, backgroundColor: "transparent" }}
+        scrollEnabled={false}
+        javaScriptEnabled
+        originWhitelist={["*"]}
+      />
+    </View>
+  );
+};
+
 const MiniLineChart = ({
   data,
   lineColor,
   height = 80,
   refLines,
+  yUnit,
+  yTickFormatter,
+  showXLabels = true,
 }: {
   data: { label: string; value: number | null }[];
   lineColor: string;
   height?: number;
   refLines?: { value: number; color: string }[];
+  yUnit?: string;
+  yTickFormatter?: (v: number) => string;
+  showXLabels?: boolean;
   lineKey?: string;
 }) => {
-  const W = SCREEN_W - 80;
+  const AXIS_W = 44;
+  const CHART_W = SCREEN_W - 80 - AXIS_W;
   const validData = data.filter((d) => d.value != null) as {
     label: string;
     value: number;
@@ -652,105 +773,55 @@ const MiniLineChart = ({
   const maxVal = Math.max(...allValues, 1);
   const minVal = Math.min(...allValues, 0);
   const range = maxVal - minVal || 1;
+  const formatTick = (v: number) => {
+    const base = yTickFormatter
+      ? yTickFormatter(v)
+      : Number.isInteger(v)
+        ? String(v)
+        : v.toFixed(1);
+    return yUnit ? `${base}${yUnit}` : base;
+  };
+
+  const tickPcts = [1, 0.67, 0.33, 0] as const;
+  const ticks = tickPcts.map((p) => {
+    const v = minVal + (maxVal - minVal) * p;
+    return Math.round(v * 10) / 10;
+  });
+
   const pts = data.map((d, i) => ({
-    x: (i / (data.length - 1)) * W,
+    x: (i / (data.length - 1)) * CHART_W,
     y: d.value != null ? height - ((d.value - minVal) / range) * height : null,
   }));
 
   return (
-    <View style={{ height: height + 4, width: W }}>
-      {refLines?.map((ref, ri) => {
-        const refY = height - ((ref.value - minVal) / range) * height;
-        return (
-          <View
-            key={ri}
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: refY,
-              height: 1,
-              borderTopWidth: 1,
-              borderTopColor: ref.color,
-              borderStyle: "dashed",
-              opacity: 0.6,
-            }}
-          />
-        );
-      })}
-      {pts.map((pt, i) => {
-        if (i === 0 || pt.y == null) return null;
-        const prev = pts[i - 1];
-        if (prev.y == null) return null;
-        const dx = pt.x - prev.x;
-        const dy = pt.y - prev.y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-        return (
-          <View
-            key={i}
-            style={{
-              position: "absolute",
-              left: prev.x,
-              top: prev.y,
-              width: len,
-              height: 2,
-              backgroundColor: lineColor,
-              transform: [{ rotate: `${angle}deg` }],
-              transformOrigin: "left center",
-            }}
-          />
-        );
-      })}
-      {pts.map((pt, i) =>
-        pt.y != null ? (
-          <View
-            key={i}
-            style={{
-              position: "absolute",
-              left: pt.x - 3,
-              top: pt.y - 3,
-              width: 6,
-              height: 6,
-              borderRadius: 3,
-              backgroundColor: lineColor,
-            }}
-          />
-        ) : null,
-      )}
-    </View>
-  );
-};
-
-const MultiLineChart = ({
-  data,
-  lines,
-  height = 120,
-  refLines,
-}: {
-  data: { month: string; [key: string]: any }[];
-  lines: { key: string; color: string; label: string }[];
-  height?: number;
-  refLines?: { value: number; color: string; label: string }[];
-}) => {
-  const W = SCREEN_W - 80;
-  const allValues = [
-    ...data.flatMap((d) => lines.map((l) => d[l.key] ?? 0)),
-    ...(refLines?.map((r) => r.value) ?? []),
-  ];
-  const maxVal = Math.max(...allValues, 1);
-  const minVal = Math.min(...allValues, 0);
-  const range = maxVal - minVal || 1;
-  const getY = (val: number | null) =>
-    val != null ? height - ((val - minVal) / range) * height : null;
-
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
       <View
-        style={{ width: Math.max(W, data.length * 36), height: height + 28 }}
+        style={{
+          width: AXIS_W,
+          height: height + (showXLabels ? 26 : 4),
+          justifyContent: "space-between",
+          paddingBottom: showXLabels ? 16 : 0,
+        }}
       >
-        {/* Horizontal grid lines at 25%, 50%, 75%, 100% */}
-        {[0.25, 0.5, 0.75, 1].map((pct) => (
+        {ticks.map((t, i) => (
+          <Text
+            key={i}
+            style={{
+              fontFamily: fonts.medium,
+              fontSize: 10,
+              color: "#475569",
+              textAlign: "right",
+              paddingRight: 6,
+            }}
+          >
+            {formatTick(t)}
+          </Text>
+        ))}
+      </View>
+
+      <View style={{ height: height + (showXLabels ? 26 : 4), width: CHART_W }}>
+        {/* Horizontal grid lines */}
+        {tickPcts.map((pct) => (
           <View
             key={`grid-${pct}`}
             style={{
@@ -763,9 +834,9 @@ const MultiLineChart = ({
             }}
           />
         ))}
+
         {refLines?.map((ref, ri) => {
-          const refY = getY(ref.value);
-          if (refY == null) return null;
+          const refY = height - ((ref.value - minVal) / range) * height;
           return (
             <View
               key={ri}
@@ -778,64 +849,254 @@ const MultiLineChart = ({
                 borderTopWidth: 1,
                 borderTopColor: ref.color,
                 borderStyle: "dashed",
-                opacity: 0.6,
+                opacity: 0.7,
               }}
             />
           );
         })}
-        {lines.map((line) => {
-          const chartW = Math.max(W, data.length * 36);
-          return data.map((d, i) => {
-            if (i === 0) return null;
-            const prev = data[i - 1];
-            const x1 = ((i - 1) / (data.length - 1)) * chartW;
-            const x2 = (i / (data.length - 1)) * chartW;
-            const y1 = getY(prev[line.key]);
-            const y2 = getY(d[line.key]);
-            if (y1 == null || y2 == null) return null;
-            const dx = x2 - x1,
-              dy = y2 - y1;
-            const len = Math.sqrt(dx * dx + dy * dy);
-            const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-            return (
-              <View
-                key={`${line.key}-${i}`}
-                style={{
-                  position: "absolute",
-                  left: x1,
-                  top: y1,
-                  width: len,
-                  height: 2,
-                  backgroundColor: line.color,
-                  transform: [{ rotate: `${angle}deg` }],
-                  transformOrigin: "left center",
-                }}
-              />
-            );
-          });
-        })}
-        {data.map((d, i) => {
-          const chartW = Math.max(W, data.length * 36);
+
+        {pts.map((pt, i) => {
+          if (i === 0 || pt.y == null) return null;
+          const prev = pts[i - 1];
+          if (prev.y == null) return null;
+          const dx = pt.x - prev.x;
+          const dy = pt.y - prev.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
           return (
+            <View
+              key={i}
+              style={{
+                position: "absolute",
+                left: prev.x,
+                top: prev.y,
+                width: len,
+                height: 2,
+                backgroundColor: lineColor,
+                transform: [{ rotate: `${angle}deg` }],
+                transformOrigin: "left center",
+              }}
+            />
+          );
+        })}
+
+        {pts.map((pt, i) =>
+          pt.y != null ? (
+            <View
+              key={i}
+              style={{
+                position: "absolute",
+                left: pt.x - 3,
+                top: pt.y - 3,
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: lineColor,
+              }}
+            />
+          ) : null,
+        )}
+
+        {showXLabels &&
+          data.map((d, i) => (
             <Text
               key={i}
               style={{
                 position: "absolute",
-                bottom: 0,
-                left: (i / (data.length - 1)) * chartW - 12,
+                bottom: 2,
+                left: (i / (data.length - 1)) * CHART_W - 12,
                 width: 28,
                 textAlign: "center",
-                fontSize: 8,
-                color: colors.grayText,
-                fontFamily: fonts.regular,
+                fontSize: 10,
+                color: "#475569",
+                fontFamily: fonts.medium,
+                backgroundColor: "rgba(255,255,255,0.92)",
+                paddingHorizontal: 2,
+                paddingVertical: 1,
+                borderRadius: 4,
+                overflow: "hidden",
               }}
             >
-              {d.month}
+              {d.label}
             </Text>
-          );
-        })}
+          ))}
       </View>
-    </ScrollView>
+    </View>
+  );
+};
+
+const MultiLineChart = ({
+  data,
+  lines,
+  height = 120,
+  refLines,
+  yUnit,
+  yTickFormatter,
+}: {
+  data: { month: string; [key: string]: any }[];
+  lines: { key: string; color: string; label: string }[];
+  height?: number;
+  refLines?: { value: number; color: string; label: string }[];
+  yUnit?: string;
+  yTickFormatter?: (v: number) => string;
+}) => {
+  const AXIS_W = 44;
+  const VIEWPORT_W = SCREEN_W - 80 - AXIS_W;
+  const allValues = [
+    ...data.flatMap((d) => lines.map((l) => d[l.key] ?? 0)),
+    ...(refLines?.map((r) => r.value) ?? []),
+  ];
+  const maxVal = Math.max(...allValues, 1);
+  const minVal = Math.min(...allValues, 0);
+  const range = maxVal - minVal || 1;
+  const getY = (val: number | null) =>
+    val != null ? height - ((val - minVal) / range) * height : null;
+
+  const axisLabelColor = "#475569";
+  const formatTick = (v: number) => {
+    const base = yTickFormatter
+      ? yTickFormatter(v)
+      : Number.isInteger(v)
+        ? String(v)
+        : v.toFixed(1);
+    return yUnit ? `${base}${yUnit}` : base;
+  };
+  const tickPcts = [1, 0.67, 0.33, 0] as const;
+  const ticks = tickPcts.map((p) => {
+    const v = minVal + (maxVal - minVal) * p;
+    return Math.round(v * 10) / 10;
+  });
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+      <View
+        style={{
+          width: AXIS_W,
+          height: height + 40,
+          justifyContent: "space-between",
+          paddingBottom: 16,
+        }}
+      >
+        {ticks.map((t, i) => (
+          <Text
+            key={i}
+            style={{
+              fontFamily: fonts.medium,
+              fontSize: 10,
+              color: axisLabelColor,
+              textAlign: "right",
+              paddingRight: 6,
+            }}
+          >
+            {formatTick(t)}
+          </Text>
+        ))}
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View
+          style={{
+            width: Math.max(VIEWPORT_W, data.length * 36),
+            height: height + 40,
+            paddingBottom: 14,
+          }}
+        >
+          {/* Horizontal grid lines at 25%, 50%, 75%, 100% */}
+          {tickPcts.map((pct) => (
+            <View
+              key={`grid-${pct}`}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: height * (1 - pct),
+                height: 1,
+                backgroundColor: "#E2E8F0",
+              }}
+            />
+          ))}
+
+          {refLines?.map((ref, ri) => {
+            const refY = getY(ref.value);
+            if (refY == null) return null;
+            return (
+              <View
+                key={ri}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: refY,
+                  height: 1,
+                  borderTopWidth: 1,
+                  borderTopColor: ref.color,
+                  borderStyle: "dashed",
+                  opacity: 0.7,
+                }}
+              />
+            );
+          })}
+
+          {lines.map((line) => {
+            const chartW = Math.max(VIEWPORT_W, data.length * 36);
+            return data.map((d, i) => {
+              if (i === 0) return null;
+              const prev = data[i - 1];
+              const x1 = ((i - 1) / (data.length - 1)) * chartW;
+              const x2 = (i / (data.length - 1)) * chartW;
+              const y1 = getY(prev[line.key]);
+              const y2 = getY(d[line.key]);
+              if (y1 == null || y2 == null) return null;
+              const dx = x2 - x1,
+                dy = y2 - y1;
+              const len = Math.sqrt(dx * dx + dy * dy);
+              const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+              return (
+                <View
+                  key={`${line.key}-${i}`}
+                  style={{
+                    position: "absolute",
+                    left: x1,
+                    top: y1,
+                    width: len,
+                    height: 2,
+                    backgroundColor: line.color,
+                    transform: [{ rotate: `${angle}deg` }],
+                    transformOrigin: "left center",
+                  }}
+                />
+              );
+            });
+          })}
+
+          {data.map((d, i) => {
+            const chartW = Math.max(VIEWPORT_W, data.length * 36);
+            return (
+              <Text
+                key={i}
+                style={{
+                  position: "absolute",
+                  bottom: 2,
+                  left: (i / (data.length - 1)) * chartW - 12,
+                  width: 28,
+                  textAlign: "center",
+                  fontSize: 10,
+                  color: axisLabelColor,
+                  fontFamily: fonts.medium,
+                  backgroundColor: "rgba(255,255,255,0.92)",
+                  paddingHorizontal: 2,
+                  paddingVertical: 1,
+                  borderRadius: 4,
+                  overflow: "hidden",
+                }}
+              >
+                {d.month}
+              </Text>
+            );
+          })}
+        </View>
+      </ScrollView>
+    </View>
   );
 };
 
@@ -1467,17 +1728,20 @@ export default function PatternAnalyzerScreen() {
               />
             )}
             {activeChart === "climate" && (
-              <MultiLineChart
-                data={chartData.map((d) => ({
-                  month: d.label,
-                  temp: d.temp,
-                  humidity: d.humidity,
-                }))}
-                lines={[
-                  { key: "temp", color: colors.orange, label: "Temp °C" },
-                  { key: "humidity", color: colors.cyan, label: "Humidity %" },
-                ]}
-                height={100}
+              <DualAxisLineChartJS
+                labels={chartData.map((d) => d.label)}
+                left={{
+                  values: chartData.map((d) => d.temp),
+                  color: colors.orange,
+                  label: "Temp",
+                  unit: "°C",
+                }}
+                right={{
+                  values: chartData.map((d) => d.humidity),
+                  color: colors.cyan,
+                  label: "Humidity",
+                  unit: "%",
+                }}
               />
             )}
             {activeChart === "rainfall" && (
@@ -1488,35 +1752,14 @@ export default function PatternAnalyzerScreen() {
                 }))}
                 lineColor={colors.primary}
                 height={100}
+                yUnit="mm"
+                yTickFormatter={(v) => String(Math.round(v))}
                 refLines={[
                   { value: IDEAL.rainMax, color: colors.red },
                   { value: IDEAL.rainMin, color: colors.emerald },
                 ]}
               />
             )}
-
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                marginTop: 8,
-              }}
-            >
-              {chartData
-                .filter((_, i) => i % 2 === 0 || chartData.length <= 6)
-                .map((d, i) => (
-                  <Text
-                    key={i}
-                    style={{
-                      fontSize: 9,
-                      color: colors.grayText,
-                      fontFamily: fonts.regular,
-                    }}
-                  >
-                    {d.label}
-                  </Text>
-                ))}
-            </View>
 
             <View
               style={{

@@ -40,7 +40,7 @@ const fonts = {
   bold: "Poppins_700Bold",
 };
 
-// Recommended values for String Beans based on agricultural research
+// Reference ranges for String Beans (prototype uses these as guidance).
 const STRING_BEANS_RECOMMENDATIONS = {
   soilMoisture: {
     min: 60,
@@ -72,7 +72,7 @@ const STRING_BEANS_RECOMMENDATIONS = {
     optimal: 20,
     unit: "minutes",
     description:
-      "Recommended irrigation duration is 15-30 minutes per session, depending on soil type and weather conditions.",
+      "Prototype default only (demo). Duration should be calibrated for real field use based on flow rate, soil type, and crop stage.",
   },
   irrigationFrequency: {
     min: 1,
@@ -80,7 +80,7 @@ const STRING_BEANS_RECOMMENDATIONS = {
     optimal: 2,
     unit: "times per day",
     description:
-      "Water string beans 1-3 times per day during dry season, 1-2 times during wet season.",
+      "Prototype default only (demo). Frequency should be calibrated for real field use based on weather, soil moisture readings, and season.",
   },
 };
 
@@ -687,7 +687,8 @@ export default function WaterRequirementScreen() {
             <Text style={styles.infoText}>
               Set custom thresholds for your crop. Fields are editable and use
               hint values as a guide. Recommended ranges are shown for
-              reference.
+              reference. Irrigation duration/frequency are prototype demo values
+              and should be calibrated before real field use.
             </Text>
           </View>
 
@@ -768,7 +769,6 @@ export default function WaterRequirementScreen() {
               unit="minutes"
               hint="e.g. 20"
               inputStyle={styles.irrigationInput}
-              recommended={STRING_BEANS_RECOMMENDATIONS.irrigationDuration}
               description={
                 STRING_BEANS_RECOMMENDATIONS.irrigationDuration.description
               }
@@ -782,7 +782,6 @@ export default function WaterRequirementScreen() {
               unit="times/day"
               hint="e.g. 2"
               inputStyle={styles.irrigationInput}
-              recommended={STRING_BEANS_RECOMMENDATIONS.irrigationFrequency}
               description={
                 STRING_BEANS_RECOMMENDATIONS.irrigationFrequency.description
               }

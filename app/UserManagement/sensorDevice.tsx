@@ -44,6 +44,12 @@ interface SensorDevice {
   status: boolean;
 }
 
+const SENSOR_TYPES = ["Soil Moisture", "Temperature", "Humidity"] as const;
+
+const SERIAL_MIN_LEN = 3;
+const SERIAL_MAX_LEN = 32;
+const SERIAL_ALLOWED = /^[A-Za-z0-9_-]+$/;
+
 export default function SensorDeviceScreen() {
   const params = useLocalSearchParams<{ email?: string }>();
   const email = typeof params.email === "string" ? params.email : "";
@@ -52,6 +58,7 @@ export default function SensorDeviceScreen() {
   const [devices, setDevices] = useState<SensorDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
+  const [sensorTypePickerVisible, setSensorTypePickerVisible] = useState(false);
   const [newDevice, setNewDevice] = useState({
     sensor_type: "",
     serial_number: "",
@@ -152,15 +159,18 @@ export default function SensorDeviceScreen() {
       return;
     }
 
-    if (!newDevice.sensor_type.trim()) {
+    const sensorType = newDevice.sensor_type.trim();
+    const serial = newDevice.serial_number.trim();
+
+    if (!sensorType) {
       Alert.alert(
         "Sensor Type Required",
-        "Please enter the sensor type to continue.",
+        "Please choose a sensor type to continue.",
       );
       return;
     }
 
-    if (!newDevice.serial_number.trim()) {
+    if (!serial) {
       Alert.alert(
         "Serial Number Required",
         "Please enter the serial number to continue.",
@@ -168,14 +178,55 @@ export default function SensorDeviceScreen() {
       return;
     }
 
+    if (serial.length < SERIAL_MIN_LEN || serial.length > SERIAL_MAX_LEN) {
+      Alert.alert(
+        "Invalid Serial Number",
+        `Serial number must be ${SERIAL_MIN_LEN}–${SERIAL_MAX_LEN} characters.`,
+      );
+      return;
+    }
+
+    if (!SERIAL_ALLOWED.test(serial)) {
+      Alert.alert(
+        "Invalid Serial Number",
+        "Only letters, numbers, hyphen (-), and underscore (_) are allowed (no spaces).",
+      );
+      return;
+    }
+
     setSaving(true);
     try {
+      // Prevent duplicates within the same farm (best UX; DB may also enforce uniqueness)
+      const { data: existingDevice, error: existingError } = await supabase
+        .from("sensor_device")
+        .select("id")
+        .eq("farm_id", farmId)
+        .ilike("serial_number", serial)
+        .maybeSingle();
+
+      if (existingError) {
+        console.error("Error checking serial number:", existingError);
+        Alert.alert(
+          "Validation Failed",
+          "Unable to validate the serial number. Please try again.",
+        );
+        return;
+      }
+
+      if (existingDevice?.id) {
+        Alert.alert(
+          "Serial Number Already Registered",
+          "This serial number is already registered for your farm. Please check the serial number and try again.",
+        );
+        return;
+      }
+
       const { data, error } = await supabase
         .from("sensor_device")
         .insert({
           farm_id: farmId,
-          sensor_type: newDevice.sensor_type.trim(),
-          serial_number: newDevice.serial_number.trim(),
+          sensor_type: sensorType,
+          serial_number: serial,
           installation_date: new Date().toISOString().split("T")[0],
           last_calibration_date: new Date().toISOString().split("T")[0],
           status: true,
@@ -195,6 +246,7 @@ export default function SensorDeviceScreen() {
       setDevices([data, ...devices]);
       setNewDevice({ sensor_type: "", serial_number: "" });
       setModalVisible(false);
+      setSensorTypePickerVisible(false);
       Alert.alert("Device Added", "The device has been added successfully.");
     } catch (error) {
       console.error("Error adding device:", error);
@@ -404,14 +456,25 @@ export default function SensorDeviceScreen() {
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Sensor Type</Text>
-              <TextInput
-                style={styles.input}
-                value={newDevice.sensor_type}
-                onChangeText={(text) =>
-                  setNewDevice({ ...newDevice, sensor_type: text })
-                }
-                placeholder="e.g., Soil Moisture, Temperature, Humidity"
-              />
+              <TouchableOpacity
+                style={styles.dropdown}
+                onPress={() => setSensorTypePickerVisible(true)}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.dropdownText,
+                    !newDevice.sensor_type && styles.dropdownPlaceholder,
+                  ]}
+                >
+                  {newDevice.sensor_type || "Select sensor type"}
+                </Text>
+                <FontAwesome
+                  name="chevron-down"
+                  size={14}
+                  color={colors.brandGrayText}
+                />
+              </TouchableOpacity>
             </View>
 
             <View style={styles.inputGroup}>
@@ -423,7 +486,13 @@ export default function SensorDeviceScreen() {
                   setNewDevice({ ...newDevice, serial_number: text })
                 }
                 placeholder="Enter serial number"
+                autoCapitalize="characters"
+                autoCorrect={false}
               />
+              <Text style={styles.helperText}>
+                Use {SERIAL_MIN_LEN}–{SERIAL_MAX_LEN} characters: letters/numbers,
+                hyphen (-), underscore (_). No spaces.
+              </Text>
             </View>
 
             <View style={styles.buttonRow}>
@@ -431,6 +500,7 @@ export default function SensorDeviceScreen() {
                 style={[styles.button, styles.cancelButton]}
                 onPress={() => {
                   setModalVisible(false);
+                  setSensorTypePickerVisible(false);
                   setNewDevice({ sensor_type: "", serial_number: "" });
                 }}
               >
@@ -451,6 +521,59 @@ export default function SensorDeviceScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Sensor type picker */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={sensorTypePickerVisible}
+        onRequestClose={() => setSensorTypePickerVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.pickerOverlay}
+          activeOpacity={1}
+          onPress={() => setSensorTypePickerVisible(false)}
+        >
+          <View style={styles.pickerCard}>
+            <Text style={styles.pickerTitle}>Select Sensor Type</Text>
+            {SENSOR_TYPES.map((t) => (
+              <TouchableOpacity
+                key={t}
+                style={[
+                  styles.pickerOption,
+                  newDevice.sensor_type === t && styles.pickerOptionActive,
+                ]}
+                onPress={() => {
+                  setNewDevice({ ...newDevice, sensor_type: t });
+                  setSensorTypePickerVisible(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.pickerOptionText,
+                    newDevice.sensor_type === t && styles.pickerOptionTextActive,
+                  ]}
+                >
+                  {t}
+                </Text>
+                {newDevice.sensor_type === t && (
+                  <FontAwesome
+                    name="check"
+                    size={14}
+                    color={colors.brandBlue}
+                  />
+                )}
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.pickerCancel}
+              onPress={() => setSensorTypePickerVisible(false)}
+            >
+              <Text style={styles.pickerCancelText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
@@ -569,6 +692,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#1F2937",
     backgroundColor: "#fff",
+  },
+  helperText: {
+    marginTop: 6,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.brandGrayText,
+    lineHeight: 16,
+  },
+  dropdown: {
+    borderWidth: 1,
+    borderColor: colors.brandGrayBorder,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fff",
+  },
+  dropdownText: {
+    fontFamily: fonts.regular,
+    fontSize: 15,
+    color: "#1F2937",
+  },
+  dropdownPlaceholder: {
+    color: colors.brandGrayText,
   },
   buttonRow: {
     flexDirection: "row",
@@ -699,5 +848,63 @@ const styles = StyleSheet.create({
     padding: 20,
     width: "90%",
     maxWidth: 340,
+  },
+  pickerOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    padding: 16,
+  },
+  pickerCard: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+  },
+  pickerTitle: {
+    fontFamily: fonts.semibold,
+    fontSize: 16,
+    color: "#111827",
+    marginBottom: 10,
+  },
+  pickerOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.brandGrayBorder,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+    backgroundColor: "#fff",
+  },
+  pickerOptionActive: {
+    borderColor: colors.brandBlue,
+    backgroundColor: "#EFF6FF",
+  },
+  pickerOptionText: {
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    color: "#111827",
+  },
+  pickerOptionTextActive: {
+    color: colors.brandBlue,
+  },
+  pickerCancel: {
+    marginTop: 2,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: colors.brandGrayBorder,
+  },
+  pickerCancelText: {
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: "#111827",
   },
 });
