@@ -194,7 +194,7 @@ function formatPHTime(isoString: string): string {
 
 // ✅ FIXED: matches admin conversion — higher raw ADC value = drier soil
 function rawToPercent(raw: number): number {
-  const percent = Math.round(((700 - raw) / 700) * 100);
+  const percent = Math.round(((1023 - raw) / 1023) * 100);
   return Math.min(100, Math.max(0, percent));
 }
 

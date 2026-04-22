@@ -1,7 +1,7 @@
 import { fontScale, scale } from "@/lib/responsive";
+import bcrypt from "@/lib/bcrypt";
 import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
-import * as Crypto from "expo-crypto";
 import * as Device from "expo-device";
 import { Link, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -250,11 +250,7 @@ export default function SignupScreen() {
       const deviceId = Device.osInternalBuildId || Device.modelId || "unknown";
       const deviceModel = Device.modelName || Device.modelId || "unknown";
 
-      // Hash the password
-      const hashedPassword = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        password,
-      );
+      const hashedPassword = await bcrypt.hash(String(password ?? ""), 10);
 
       const newId = generateUUID();
 

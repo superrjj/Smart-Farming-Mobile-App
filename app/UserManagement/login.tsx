@@ -7,11 +7,10 @@ import {
   saveLoggedInEmail,
 } from "@/lib/storage";
 import { AdminAccessDeniedModal } from "@/components/admin-access-denied-modal";
-import { fetchUserProfileByCredentials } from "@/lib/fetchUserProfileByCredentials";
+import bcrypt from "@/lib/bcrypt";
 import { isAdminRole } from "@/lib/isAdminRole";
 import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
-import * as Crypto from "expo-crypto";
 import * as Device from "expo-device";
 import { Link, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -106,25 +105,73 @@ export default function LoginScreen() {
       const deviceId = Device.osInternalBuildId || Device.modelId || "unknown";
       const deviceModel = Device.modelName || Device.modelId || "unknown";
 
-      const hashedPassword = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        password,
-      );
-
       const trimmedInput = emailOrPhone.trim();
+      let userProfile: Record<string, any> | null = null;
 
-      const { profile: userProfile, error } =
-        await fetchUserProfileByCredentials(trimmedInput, hashedPassword);
+      const { data: emailProfile, error: emailError } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("email", trimmedInput)
+        .maybeSingle();
 
-      if (error) {
+      if (emailError) {
         Alert.alert(
           "Login Failed",
-          error.message || "An error occurred during login. Please try again.",
+          emailError.message || "An error occurred during login. Please try again.",
         );
         return;
       }
 
+      if (emailProfile) {
+        userProfile = emailProfile;
+      } else {
+        const { data: phoneProfile, error: phoneError } = await supabase
+          .from("user_profiles")
+          .select("*")
+          .eq("phone_number", trimmedInput)
+          .maybeSingle();
+
+        if (phoneError) {
+          Alert.alert(
+            "Login Failed",
+            phoneError.message ||
+              "An error occurred during login. Please try again.",
+          );
+          return;
+        }
+        userProfile = phoneProfile;
+      }
+
       if (!userProfile || typeof userProfile.email !== "string") {
+        Alert.alert(
+          "Login Failed",
+          "Invalid email/phone number or password. Please check your credentials and try again.",
+        );
+        return;
+      }
+
+      const inputPassword = String(password ?? "");
+      const storedPassword =
+        typeof userProfile.password === "string"
+          ? userProfile.password
+          : String(userProfile.password ?? "");
+      const isBcryptHash = /^\$2[aby]\$/.test(storedPassword);
+      let passwordMatches = false;
+
+      if (isBcryptHash) {
+        try {
+          passwordMatches = await bcrypt.compare(inputPassword, storedPassword);
+        } catch (compareError) {
+          console.warn("Password hash format issue, using legacy fallback.");
+          passwordMatches = inputPassword === storedPassword;
+        }
+      } else {
+        // Backward compatibility for accounts created outside mobile that may
+        // still store plain text / non-bcrypt passwords.
+        passwordMatches = inputPassword === storedPassword;
+      }
+
+      if (!passwordMatches) {
         Alert.alert(
           "Login Failed",
           "Invalid email/phone number or password. Please check your credentials and try again.",
@@ -249,10 +296,7 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const hashedPassword = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        newPassword,
-      );
+      const hashedPassword = await bcrypt.hash(String(newPassword ?? ""), 10);
 
       const { error: updateError } = await supabase
         .from("user_profiles")

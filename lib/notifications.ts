@@ -177,13 +177,18 @@ export async function getExpoPushToken(): Promise<string | null> {
     if (!Notifications) return null;
 
     const projectId =
-      Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      Constants.easConfig?.projectId;
     if (!projectId) {
-      console.warn("[notifications] Missing EAS projectId for Expo push token.");
+      console.warn(
+        "[notifications] Missing EAS projectId for Expo push token.",
+      );
       return null;
     }
 
-    const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
+    const tokenResponse = await Notifications.getExpoPushTokenAsync({
+      projectId,
+    });
     return tokenResponse.data ?? null;
   } catch (error) {
     console.error("Error getting Expo push token:", error);
@@ -345,7 +350,7 @@ export async function scheduleIrrigationNotification(
 
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
-        title: "🌱 Irrigation Reminder",
+        title: "Irrigation Reminder",
         body: `Time to irrigate your crops! Scheduled for ${time}`,
         sound: true,
         ...(Platform.OS === "android" && {
@@ -482,7 +487,9 @@ export async function rescheduleNotificationsForDates(
       }
     }
 
-    console.log("Rescheduled all notifications (Philippines / Asia/Manila times)");
+    console.log(
+      "Rescheduled all notifications (Philippines / Asia/Manila times)",
+    );
   } catch (error) {
     console.error("Error rescheduling notifications:", error);
   }

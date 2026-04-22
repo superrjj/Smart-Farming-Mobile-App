@@ -5,6 +5,7 @@ import {
 } from "@/lib/notifications";
 import { clearAllStorage, getLoggedInEmail } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
+import { AdminAccessDeniedModal } from "@/components/admin-access-denied-modal";
 import { Stack, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -17,6 +18,7 @@ import {
 } from "react-native";
 
 type RecoPopup = { title: string; message: string } | null;
+type NetworkErrorPopup = { title: string; message: string } | null;
 type RemarkPayload = {
   date_key?: string | null;
   text?: string | null;
@@ -45,8 +47,16 @@ export default function UserManagementLayout() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [popup, setPopup] = useState<RecoPopup>(null);
+  const [networkError, setNetworkError] = useState<NetworkErrorPopup>(null);
+  const [adminDeniedVisible, setAdminDeniedVisible] = useState(false);
   const appStateRef = useRef(AppState.currentState);
   const scheduleIdsRef = useRef<string[]>([]);
+  const showNetworkError = (message: string) => {
+    setNetworkError({
+      title: "Network Failed",
+      message,
+    });
+  };
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
@@ -57,15 +67,27 @@ export default function UserManagementLayout() {
 
   useEffect(() => {
     const loadUser = async () => {
-      const email = await getLoggedInEmail();
-      if (!email) return;
-      setUserEmail(email);
-      const { data } = await supabase
-        .from("user_profiles")
-        .select("id")
-        .eq("email", email)
-        .maybeSingle();
-      if (data?.id) setUserId(data.id);
+      try {
+        const email = await getLoggedInEmail();
+        if (!email) return;
+        setUserEmail(email);
+        const { data, error } = await supabase
+          .from("user_profiles")
+          .select("id")
+          .eq("email", email)
+          .maybeSingle();
+        if (error) {
+          showNetworkError(
+            "Unable to load your account details. Please check your internet connection and try again.",
+          );
+          return;
+        }
+        if (data?.id) setUserId(data.id);
+      } catch {
+        showNetworkError(
+          "Unable to connect to the server. Please check your internet connection and try again.",
+        );
+      }
     };
     void loadUser();
   }, []);
@@ -79,7 +101,14 @@ export default function UserManagementLayout() {
         .from("irrigation_schedules")
         .select("id")
         .eq("user_id", userId);
-      if (error || cancelled) return;
+      if (error || cancelled) {
+        if (error && !cancelled) {
+          showNetworkError(
+            "Unable to load your irrigation schedules right now. Please try again later.",
+          );
+        }
+        return;
+      }
       scheduleIdsRef.current = (data ?? []).map((row) => String(row.id));
     };
 
@@ -97,9 +126,8 @@ export default function UserManagementLayout() {
         },
       });
       if (error) {
-        console.warn(
-          "[push] Failed to save user push token via function:",
-          error.message,
+        showNetworkError(
+          "Unable to register push notifications right now. Please check your internet connection and try again.",
         );
       }
     })();
@@ -174,6 +202,7 @@ export default function UserManagementLayout() {
           } catch {
             // ignore storage failures; still redirect
           }
+          setAdminDeniedVisible(true);
           router.replace({
             pathname: "/UserManagement/login",
             params: { blocked: "admin" },
@@ -205,7 +234,13 @@ export default function UserManagementLayout() {
         .eq("day", parsed.day)
         .limit(1);
 
-      if (error || !data || data.length === 0) return;
+      if (error) {
+        showNetworkError(
+          "Unable to sync irrigation remarks right now. Please check your connection and try again.",
+        );
+        return;
+      }
+      if (!data || data.length === 0) return;
 
       const title = "Admin Remark";
       const body = row.text ?? "";
@@ -247,9 +282,13 @@ export default function UserManagementLayout() {
             .from("irrigation_schedules")
             .select("id")
             .eq("user_id", userId);
-          if (!error) {
-            scheduleIdsRef.current = (data ?? []).map((row) => String(row.id));
+          if (error) {
+            showNetworkError(
+              "Unable to refresh irrigation schedules. Please check your internet connection and try again.",
+            );
+            return;
           }
+          scheduleIdsRef.current = (data ?? []).map((row) => String(row.id));
         },
       )
       .subscribe();
@@ -336,6 +375,33 @@ export default function UserManagementLayout() {
             <TouchableOpacity
               style={styles.okButton}
               onPress={() => setPopup(null)}
+            >
+              <Text style={styles.okText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <AdminAccessDeniedModal
+        visible={adminDeniedVisible}
+        onDismiss={() => setAdminDeniedVisible(false)}
+      />
+
+      <Modal
+        visible={!!networkError}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNetworkError(null)}
+      >
+        <View style={styles.popupBackdrop}>
+          <View style={styles.popupCard}>
+            <Text style={styles.popupTitle}>
+              {networkError?.title ?? "Network Failed"}
+            </Text>
+            <Text style={styles.popupMessage}>{networkError?.message ?? ""}</Text>
+            <TouchableOpacity
+              style={styles.okButton}
+              onPress={() => setNetworkError(null)}
             >
               <Text style={styles.okText}>OK</Text>
             </TouchableOpacity>

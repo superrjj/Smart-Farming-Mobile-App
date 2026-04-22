@@ -439,7 +439,7 @@ export default function DashboardScreen() {
         if (soilData) {
           const raw = Number(soilData.value);
           // Match admin conversion: higher raw = drier (inverted ADC scale)
-          const percent = Math.round(((700 - raw) / 700) * 100);
+          const percent = Math.round(((1023 - raw) / 1023) * 100);
           const clamped = Math.min(100, Math.max(0, percent));
           setSoilMoisturePercent(clamped);
         }
@@ -1957,7 +1957,7 @@ const styles = StyleSheet.create({
   },
   avatarInitial: {
     fontFamily: fonts.semibold,
-    fontSize: 18,
+    fontSize: 22,
     color: colors.brandBlue,
   },
   profilePicture: {
