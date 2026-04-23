@@ -458,7 +458,9 @@ export default function SensorDeviceScreen() {
               <Text style={styles.inputLabel}>Sensor Type</Text>
               <TouchableOpacity
                 style={styles.dropdown}
-                onPress={() => setSensorTypePickerVisible(true)}
+                onPress={() =>
+                  setSensorTypePickerVisible((visible) => !visible)
+                }
                 activeOpacity={0.8}
               >
                 <Text
@@ -475,6 +477,41 @@ export default function SensorDeviceScreen() {
                   color={colors.brandGrayText}
                 />
               </TouchableOpacity>
+
+              {sensorTypePickerVisible && (
+                <View style={styles.inlinePickerCard}>
+                  {SENSOR_TYPES.map((t) => (
+                    <TouchableOpacity
+                      key={t}
+                      style={[
+                        styles.pickerOption,
+                        newDevice.sensor_type === t && styles.pickerOptionActive,
+                      ]}
+                      onPress={() => {
+                        setNewDevice({ ...newDevice, sensor_type: t });
+                        setSensorTypePickerVisible(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.pickerOptionText,
+                          newDevice.sensor_type === t &&
+                            styles.pickerOptionTextActive,
+                        ]}
+                      >
+                        {t}
+                      </Text>
+                      {newDevice.sensor_type === t && (
+                        <FontAwesome
+                          name="check"
+                          size={14}
+                          color={colors.brandBlue}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
 
             <View style={styles.inputGroup}>
@@ -523,58 +560,6 @@ export default function SensorDeviceScreen() {
         </View>
       </Modal>
 
-      {/* Sensor type picker */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={sensorTypePickerVisible}
-        onRequestClose={() => setSensorTypePickerVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.pickerOverlay}
-          activeOpacity={1}
-          onPress={() => setSensorTypePickerVisible(false)}
-        >
-          <View style={styles.pickerCard}>
-            <Text style={styles.pickerTitle}>Select Sensor Type</Text>
-            {SENSOR_TYPES.map((t) => (
-              <TouchableOpacity
-                key={t}
-                style={[
-                  styles.pickerOption,
-                  newDevice.sensor_type === t && styles.pickerOptionActive,
-                ]}
-                onPress={() => {
-                  setNewDevice({ ...newDevice, sensor_type: t });
-                  setSensorTypePickerVisible(false);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.pickerOptionText,
-                    newDevice.sensor_type === t && styles.pickerOptionTextActive,
-                  ]}
-                >
-                  {t}
-                </Text>
-                {newDevice.sensor_type === t && (
-                  <FontAwesome
-                    name="check"
-                    size={14}
-                    color={colors.brandBlue}
-                  />
-                )}
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={styles.pickerCancel}
-              onPress={() => setSensorTypePickerVisible(false)}
-            >
-              <Text style={styles.pickerCancelText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -719,6 +704,14 @@ const styles = StyleSheet.create({
   dropdownPlaceholder: {
     color: colors.brandGrayText,
   },
+  inlinePickerCard: {
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.brandGrayBorder,
+    backgroundColor: "#fff",
+    padding: 8,
+  },
   buttonRow: {
     flexDirection: "row",
     gap: 12,
@@ -849,26 +842,6 @@ const styles = StyleSheet.create({
     width: "90%",
     maxWidth: 340,
   },
-  pickerOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    padding: 16,
-  },
-  pickerCard: {
-    width: "100%",
-    maxWidth: 360,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-  },
-  pickerTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 16,
-    color: "#111827",
-    marginBottom: 10,
-  },
   pickerOption: {
     paddingVertical: 12,
     paddingHorizontal: 10,
@@ -892,19 +865,5 @@ const styles = StyleSheet.create({
   },
   pickerOptionTextActive: {
     color: colors.brandBlue,
-  },
-  pickerCancel: {
-    marginTop: 2,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    borderWidth: 1,
-    borderColor: colors.brandGrayBorder,
-  },
-  pickerCancelText: {
-    fontFamily: fonts.semibold,
-    fontSize: 14,
-    color: "#111827",
   },
 });

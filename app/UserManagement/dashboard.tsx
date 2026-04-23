@@ -38,6 +38,13 @@ const DEFAULT_COORDS = { latitude: 15.53, longitude: 120.6042 };
 /** Local UI preference only; does not command hardware or sync to the server. */
 const AUTO_IRRIGATION_MODE_KEY = "dashboard_auto_irrigation_mode";
 
+type IrrigationSystemRow = {
+  id: number;
+  farm_id: number;
+  system_name: string;
+  pump_status: boolean;
+};
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function formatPHTime(isoString: string): string {
   return new Intl.DateTimeFormat("en-PH", {
@@ -503,6 +510,8 @@ export default function DashboardScreen() {
   const [autoIrrigationConfirmOpen, setAutoIrrigationConfirmOpen] =
     useState(false);
   const [autoIrrigationPendingOn, setAutoIrrigationPendingOn] = useState(true);
+  const [irrigationSystem, setIrrigationSystem] =
+    useState<IrrigationSystemRow | null>(null);
   const drawerX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
 
   useEffect(() => {
@@ -535,14 +544,85 @@ export default function DashboardScreen() {
     setAutoIrrigationConfirmOpen(false);
   }, []);
 
-  const applyAutoIrrigationMode = useCallback((on: boolean) => {
-    setAutoIrrigationModeOn(on);
-    void AsyncStorage.setItem(AUTO_IRRIGATION_MODE_KEY, on ? "1" : "0").catch(
-      () => {},
-    );
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setAutoIrrigationConfirmOpen(false);
+  const getActiveScheduleId = useCallback(async (uid: string) => {
+    const { data: schedules } = await supabase
+      .from("irrigation_schedules")
+      .select("id")
+      .eq("user_id", uid)
+      .eq("is_active", true)
+      .limit(10);
+    const scheduleIds = (schedules ?? []).map((s) => String(s.id));
+    if (scheduleIds.length === 0) return null;
+
+    const todayYmd = toYmdLocal(new Date());
+    const { data: row } = await supabase
+      .from("irrigation_scheduled_dates")
+      .select("schedule_id, scheduled_date")
+      .in("schedule_id", scheduleIds)
+      .gte("scheduled_date", todayYmd)
+      .order("scheduled_date", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    return row?.schedule_id ? String(row.schedule_id) : scheduleIds[0] ?? null;
   }, []);
+
+  const applyAutoIrrigationMode = useCallback(
+    async (on: boolean) => {
+      try {
+        if (!userId || !irrigationSystem?.id) {
+          Alert.alert(
+            "System Not Ready",
+            "No irrigation system is linked yet for this farm. Please set up your farm and irrigation system first before using automatic irrigation.",
+          );
+          return;
+        }
+
+        const scheduleId = await getActiveScheduleId(userId);
+        const shouldStopPump = !on && irrigationSystem.pump_status;
+
+        const { error: systemError } = await supabase
+          .from("irrigation_system")
+          .update({
+            pump_status: shouldStopPump ? false : irrigationSystem.pump_status,
+          })
+          .eq("id", irrigationSystem.id);
+        if (systemError) throw systemError;
+
+        const nowIso = new Date().toISOString();
+        const { error: logError } = await supabase.from("irrigation_log").insert({
+          system_id: irrigationSystem.id,
+          triggered_by_user_id: userId,
+          trigger_type: "Automated",
+          status: shouldStopPump ? "completed" : "idle",
+          command: on ? "auto_mode_on" : "auto_mode_off",
+          start_time: nowIso,
+          end_time: shouldStopPump ? nowIso : null,
+          duration_seconds: shouldStopPump ? 0 : null,
+          schedule_id: scheduleId,
+        });
+        if (logError) throw logError;
+
+        setIrrigationSystem((prev) =>
+          prev
+            ? { ...prev, pump_status: shouldStopPump ? false : prev.pump_status }
+            : prev,
+        );
+        setAutoIrrigationModeOn(on);
+        await AsyncStorage.setItem(AUTO_IRRIGATION_MODE_KEY, on ? "1" : "0");
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (error) {
+        console.error("Failed to set automatic irrigation mode:", error);
+        Alert.alert(
+          "Update Failed",
+          "Unable to change automatic irrigation mode. Please try again.",
+        );
+      } finally {
+        setAutoIrrigationConfirmOpen(false);
+      }
+    },
+    [getActiveScheduleId, irrigationSystem, userId],
+  );
 
   const timeToMinutes = (timeStr: string): number => {
     try {
@@ -642,6 +722,43 @@ export default function DashboardScreen() {
     }
   }, []);
 
+  const ensureIrrigationSystem = useCallback(async (uid: string) => {
+    const { data: farm, error: farmError } = await supabase
+      .from("farm")
+      .select("id")
+      .eq("owner_id", uid)
+      .maybeSingle();
+    if (farmError || !farm?.id) return;
+
+    const { data: existing, error: existingError } = await supabase
+      .from("irrigation_system")
+      .select("id, farm_id, system_name, pump_status")
+      .eq("farm_id", farm.id)
+      .eq("system_name", "Main Irrigation System")
+      .maybeSingle();
+    if (existingError) return;
+
+    if (existing) {
+      setIrrigationSystem(existing as IrrigationSystemRow);
+      return;
+    }
+
+    const { data: created, error: createError } = await supabase
+      .from("irrigation_system")
+      .insert({
+        farm_id: farm.id,
+        system_name: "Main Irrigation System",
+        hardware_model: null,
+        water_source_details: null,
+        pump_status: false,
+      })
+      .select("id, farm_id, system_name, pump_status")
+      .single();
+    if (!createError && created) {
+      setIrrigationSystem(created as IrrigationSystemRow);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => true;
@@ -679,6 +796,7 @@ export default function DashboardScreen() {
           setProfilePicture(data.profile_picture);
           setUserId(data.id);
           fetchNextSchedule(data.id);
+          ensureIrrigationSystem(data.id);
         } else {
           setScheduleLoading(false);
         }
@@ -690,7 +808,61 @@ export default function DashboardScreen() {
       }
     };
     fetchProfile();
-  }, [email]);
+  }, [email, ensureIrrigationSystem, fetchNextSchedule]);
+
+  useEffect(() => {
+    if (!irrigationSystem?.id) return;
+    const channel = supabase
+      .channel(`dashboard-irrigation-system-${irrigationSystem.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "irrigation_system",
+          filter: `id=eq.${irrigationSystem.id}`,
+        },
+        (payload) => {
+          const next = payload.new as Partial<IrrigationSystemRow>;
+          setIrrigationSystem((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  pump_status: Boolean(next.pump_status),
+                }
+              : prev,
+          );
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "irrigation_log",
+          filter: `system_id=eq.${irrigationSystem.id}`,
+        },
+        (payload) => {
+          const row = payload.new as {
+            command?: string | null;
+            trigger_type?: string | null;
+          };
+          const command = String(row.command ?? "").toLowerCase();
+          if (command === "auto_mode_on") {
+            setAutoIrrigationModeOn(true);
+            void AsyncStorage.setItem(AUTO_IRRIGATION_MODE_KEY, "1").catch(() => {});
+          } else if (command === "auto_mode_off") {
+            setAutoIrrigationModeOn(false);
+            void AsyncStorage.setItem(AUTO_IRRIGATION_MODE_KEY, "0").catch(() => {});
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [irrigationSystem?.id]);
 
   useEffect(() => {
     Animated.timing(drawerX, {

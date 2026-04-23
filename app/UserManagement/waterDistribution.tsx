@@ -1,8 +1,10 @@
 import { fontScale, scale } from "@/lib/responsive";
 import { FontAwesome } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
+  Alert,
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { supabase } from "@/lib/supabase";
 
 const colors = {
   primary: "#0891B2",
@@ -41,19 +44,299 @@ const AREAS_DATA = [
   },
 ];
 
-export default function WaterDistributionScreen() {
-  const router = useRouter();
-  const [isRunning, setIsRunning] = useState(true);
-  const [areas, setAreas] = useState(AREAS_DATA);
+type IrrigationSystemRow = {
+  id: number;
+  farm_id: number;
+  system_name: string;
+  pump_status: boolean;
+};
 
-  const handleStart = () => {
-    setIsRunning(true);
-    setAreas((prev) => prev.map((a) => ({ ...a, status: "active" })));
+type UserProfileRow = {
+  id?: string | number | null;
+  user_id?: string | number | null;
+  owner_id?: string | number | null;
+};
+
+const toOwnerIdCandidates = (profile: UserProfileRow): Array<string | number> => {
+  const raw = [profile.id, profile.user_id, profile.owner_id];
+  const unique = new Set<string | number>();
+
+  raw.forEach((value) => {
+    if (value === null || value === undefined) return;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      unique.add(value);
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) unique.add(trimmed);
+    }
+  });
+
+  return Array.from(unique);
+};
+
+export default function WaterDistributionScreen() {
+  const params = useLocalSearchParams<{ email?: string }>();
+  const email = typeof params.email === "string" ? params.email : "";
+  const router = useRouter();
+  const [isRunning, setIsRunning] = useState(false);
+  const [areas, setAreas] = useState(AREAS_DATA);
+  const [system, setSystem] = useState<IrrigationSystemRow | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    const init = async () => {
+      setLoading(true);
+      try {
+        if (!email) return;
+        const { data: profile, error: profileError } = await supabase
+          .from("user_profiles")
+          .select("id, user_id, owner_id")
+          .eq("email", email)
+          .maybeSingle();
+        if (profileError || !profile?.id) return;
+        setUserId(String(profile.id));
+
+        const ownerCandidates = toOwnerIdCandidates(profile as UserProfileRow);
+        let farm: { id: number | string } | null = null;
+        let lastFarmError: { code?: string; message?: string } | null = null;
+        for (const ownerCandidate of ownerCandidates) {
+          const { data: farmData, error: farmError } = await supabase
+            .from("farm")
+            .select("id")
+            .eq("owner_id", ownerCandidate)
+            .maybeSingle();
+
+          if (farmError) {
+            // If owner_id is bigint and candidate is UUID/text, try the next candidate.
+            if (farmError.code === "22P02") {
+              lastFarmError = farmError;
+              continue;
+            }
+            throw farmError;
+          }
+
+          if (farmData?.id) {
+            farm = farmData;
+            break;
+          }
+        }
+        if (!farm?.id) {
+          if (lastFarmError?.code === "22P02") {
+            console.error(
+              "Failed to load farm: owner_id expects bigint but profile identifiers are non-numeric.",
+            );
+          }
+          return;
+        }
+
+        const { data: existingSystem, error: existingSystemError } = await supabase
+          .from("irrigation_system")
+          .select("id, farm_id, system_name, pump_status")
+          .eq("farm_id", farm.id)
+          .eq("system_name", "Main Irrigation System")
+          .maybeSingle();
+        if (existingSystemError) throw existingSystemError;
+
+        if (existingSystem) {
+          setSystem(existingSystem as IrrigationSystemRow);
+          setIsRunning(Boolean(existingSystem.pump_status));
+          return;
+        }
+
+        const { data: createdSystem, error: createError } = await supabase
+          .from("irrigation_system")
+          .insert({
+            farm_id: farm.id,
+            system_name: "Main Irrigation System",
+            hardware_model: null,
+            water_source_details: null,
+            pump_status: false,
+          })
+          .select("id, farm_id, system_name, pump_status")
+          .single();
+        if (createError) throw createError;
+
+        setSystem(createdSystem as IrrigationSystemRow);
+        setIsRunning(false);
+      } catch (err) {
+        console.error("Failed to initialize irrigation system:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void init();
+  }, [email]);
+
+  useEffect(() => {
+    if (!system?.id) return;
+    const channel = supabase
+      .channel(`water-distribution-system-${system.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "irrigation_system",
+          filter: `id=eq.${system.id}`,
+        },
+        (payload) => {
+          const next = payload.new as Partial<IrrigationSystemRow>;
+          const nextPump = Boolean(next.pump_status);
+          setSystem((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  pump_status: nextPump,
+                }
+              : prev,
+          );
+          setIsRunning(nextPump);
+          setAreas((prev) =>
+            prev.map((area) => ({
+              ...area,
+              status: nextPump ? "active" : "inactive",
+            })),
+          );
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [system?.id]);
+
+  const getActiveScheduleId = async (): Promise<string | null> => {
+    if (!userId) return null;
+    const todayYmd = new Date().toISOString().slice(0, 10);
+
+    const { data: schedules } = await supabase
+      .from("irrigation_schedules")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .limit(10);
+    const scheduleIds = (schedules ?? []).map((s) => String(s.id));
+    if (scheduleIds.length === 0) return null;
+
+    const { data: dates } = await supabase
+      .from("irrigation_scheduled_dates")
+      .select("schedule_id, scheduled_date")
+      .in("schedule_id", scheduleIds)
+      .gte("scheduled_date", todayYmd)
+      .order("scheduled_date", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    return dates?.schedule_id ? String(dates.schedule_id) : scheduleIds[0] ?? null;
   };
 
-  const handleStop = () => {
-    setIsRunning(false);
-    setAreas((prev) => prev.map((a) => ({ ...a, status: "inactive" })));
+  const handleStart = async () => {
+    if (!system?.id || sending) return;
+    setSending(true);
+    try {
+      const scheduleId = await getActiveScheduleId();
+
+      const { error: updateError } = await supabase
+        .from("irrigation_system")
+        .update({ pump_status: true })
+        .eq("id", system.id);
+      if (updateError) throw updateError;
+
+      const { error: logError } = await supabase.from("irrigation_log").insert({
+        system_id: system.id,
+        triggered_by_user_id: userId,
+        trigger_type: "Manual",
+        status: "running",
+        command: "pump_on",
+        schedule_id: scheduleId,
+      });
+      if (logError) throw logError;
+
+      setSystem((prev) => (prev ? { ...prev, pump_status: true } : prev));
+      setIsRunning(true);
+      setAreas((prev) => prev.map((a) => ({ ...a, status: "active" })));
+    } catch (err) {
+      console.error("Failed to start irrigation:", err);
+      Alert.alert(
+        "Start Failed",
+        err instanceof Error
+          ? err.message
+          : "Unable to start pump. Please try again.",
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleStop = async () => {
+    if (!system?.id || sending) return;
+    setSending(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const { error: updateError } = await supabase
+        .from("irrigation_system")
+        .update({ pump_status: false })
+        .eq("id", system.id);
+      if (updateError) throw updateError;
+
+      const { data: latestRun } = await supabase
+        .from("irrigation_log")
+        .select("id, start_time")
+        .eq("system_id", system.id)
+        .is("end_time", null)
+        .order("start_time", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestRun?.id) {
+        const startMs = new Date(latestRun.start_time).getTime();
+        const durationSeconds = Number.isNaN(startMs)
+          ? null
+          : Math.max(0, Math.round((Date.now() - startMs) / 1000));
+        const { error: closeError } = await supabase
+          .from("irrigation_log")
+          .update({
+            end_time: nowIso,
+            duration_seconds: durationSeconds,
+            status: "completed",
+            command: "pump_off",
+          })
+          .eq("id", latestRun.id);
+        if (closeError) throw closeError;
+      } else {
+        const { error: stopLogError } = await supabase.from("irrigation_log").insert({
+          system_id: system.id,
+          triggered_by_user_id: userId,
+          trigger_type: "Manual",
+          status: "completed",
+          command: "pump_off",
+          start_time: nowIso,
+          end_time: nowIso,
+          duration_seconds: 0,
+        });
+        if (stopLogError) throw stopLogError;
+      }
+
+      setSystem((prev) => (prev ? { ...prev, pump_status: false } : prev));
+      setIsRunning(false);
+      setAreas((prev) => prev.map((a) => ({ ...a, status: "inactive" })));
+    } catch (err) {
+      console.error("Failed to stop irrigation:", err);
+      Alert.alert(
+        "Stop Failed",
+        err instanceof Error
+          ? err.message
+          : "Unable to stop pump. Please try again.",
+      );
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleAddArea = () => {
@@ -63,6 +346,13 @@ export default function WaterDistributionScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Loading irrigation system...</Text>
+          </View>
+        ) : (
+          <>
         {/* Top App Bar */}
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -104,7 +394,7 @@ export default function WaterDistributionScreen() {
               ]}
               onPress={handleStart}
               activeOpacity={isRunning ? 1 : 0.8}
-              disabled={isRunning}
+              disabled={isRunning || sending || !system}
             >
               <FontAwesome
                 name="play"
@@ -132,7 +422,7 @@ export default function WaterDistributionScreen() {
               ]}
               onPress={handleStop}
               activeOpacity={!isRunning ? 1 : 0.8}
-              disabled={!isRunning}
+              disabled={!isRunning || sending || !system}
             >
               <FontAwesome
                 name="stop"
@@ -279,6 +569,8 @@ export default function WaterDistributionScreen() {
             <Text style={styles.footerStatValue}>45 L</Text>
           </View>
         </View>
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -291,6 +583,17 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  loadingText: {
+    fontFamily: fonts.medium,
+    color: colors.grayText,
+    fontSize: fontScale(14),
   },
   topBar: {
     flexDirection: "row",

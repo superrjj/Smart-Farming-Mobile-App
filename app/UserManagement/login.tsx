@@ -1,5 +1,10 @@
 import { fontScale, scale } from "@/lib/responsive";
-import { sendPasswordResetCode } from "@/lib/sendgrid";
+import {
+  invalidatePasswordResetCode,
+  isPasswordResetEdgeEnabled,
+  sendPasswordResetCode,
+  verifyPasswordResetCode,
+} from "@/lib/sendgrid";
 import {
   clearSavedCredentials,
   getSavedCredentials,
@@ -60,6 +65,9 @@ export default function LoginScreen() {
   const [forgotStep, setForgotStep] = useState(1);
   const [forgotEmail, setForgotEmail] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
+  const [sentVerificationCode, setSentVerificationCode] = useState("");
+  const [sentVerificationCodeExpiresAt, setSentVerificationCodeExpiresAt] =
+    useState<number | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [countdown, setCountdown] = useState(0);
@@ -259,9 +267,18 @@ export default function LoginScreen() {
         return;
       }
 
+      const edgeEnabled = isPasswordResetEdgeEnabled();
       const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-      await sendPasswordResetCode(forgotEmail, code);
+      if (edgeEnabled) {
+        await sendPasswordResetCode(forgotEmail);
+        setSentVerificationCode("");
+        setSentVerificationCodeExpiresAt(null);
+      } else {
+        await sendPasswordResetCode(forgotEmail, code);
+        setSentVerificationCode(code);
+        setSentVerificationCodeExpiresAt(Date.now() + 10 * 60 * 1000);
+      }
 
       setForgotStep(2);
       startCountdown();
@@ -274,13 +291,41 @@ export default function LoginScreen() {
     }
   };
 
-  const handleVerifyCode = () => {
+  const handleVerifyCode = async () => {
     if (!verificationCode) {
       Alert.alert("Error", "Please enter the verification code");
       return;
     }
 
-    setForgotStep(3);
+    setLoading(true);
+    try {
+      if (isPasswordResetEdgeEnabled()) {
+        const valid = await verifyPasswordResetCode(
+          forgotEmail,
+          verificationCode.trim(),
+        );
+        if (!valid) {
+          Alert.alert("Invalid Code", "The verification code is incorrect or expired.");
+          return;
+        }
+      } else {
+        const expiresAt = sentVerificationCodeExpiresAt ?? 0;
+        if (!sentVerificationCode || Date.now() > expiresAt) {
+          Alert.alert("Code Expired", "Please request a new verification code.");
+          return;
+        }
+        if (verificationCode.trim() !== sentVerificationCode) {
+          Alert.alert("Invalid Code", "The verification code is incorrect.");
+          return;
+        }
+      }
+
+      setForgotStep(3);
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to verify code");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleResetPassword = async () => {
@@ -304,6 +349,10 @@ export default function LoginScreen() {
         .eq("email", forgotEmail);
 
       if (updateError) throw updateError;
+
+      if (isPasswordResetEdgeEnabled()) {
+        await invalidatePasswordResetCode(forgotEmail, verificationCode.trim());
+      }
 
       Alert.alert(
         "Success",
@@ -341,6 +390,8 @@ export default function LoginScreen() {
   const resetForgotPasswordForm = () => {
     setForgotEmail("");
     setVerificationCode("");
+    setSentVerificationCode("");
+    setSentVerificationCodeExpiresAt(null);
     setNewPassword("");
     setConfirmPassword("");
     setForgotStep(1);

@@ -13,7 +13,11 @@ type DialogState = {
   confirmText?: string;
   cancelText?: string;
   confirmVariant?: "default" | "destructive" | "muted";
-  iconName?: "check-circle" | "times-circle" | "exclamation-triangle" | "sign-out";
+  iconName?:
+    | "check-circle"
+    | "times-circle"
+    | "exclamation-triangle"
+    | "sign-out";
   onConfirm?: () => void;
   onCancel?: () => void;
 };
@@ -68,6 +72,7 @@ function inferStatusType(
       "unavailable",
       "blocked",
       "not set up",
+      "not ready",
     ])
   ) {
     return "warning";
@@ -185,4 +190,3 @@ export function AlertOverrideProvider({
     </>
   );
 }
-

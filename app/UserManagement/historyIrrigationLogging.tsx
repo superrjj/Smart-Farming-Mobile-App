@@ -675,7 +675,7 @@ export default function HistoryIrrigationLoggingScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.cardTitle}>Water Logging</Text>
               <Text style={styles.cardSub}>
-                From irrigation_log · {selectedYear}
+                From irrigation logs · {selectedYear}
               </Text>
             </View>
           </View>
