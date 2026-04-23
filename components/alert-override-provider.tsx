@@ -68,7 +68,6 @@ function inferStatusType(
       "duplicate",
       "action required",
       "recommended range",
-      "reset",
       "unavailable",
       "blocked",
       "not set up",

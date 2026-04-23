@@ -1,3 +1,6 @@
+import { AdminAccessDeniedModal } from "@/components/admin-access-denied-modal";
+import bcrypt from "@/lib/bcrypt";
+import { isAdminRole } from "@/lib/isAdminRole";
 import { fontScale, scale } from "@/lib/responsive";
 import {
   invalidatePasswordResetCode,
@@ -11,9 +14,6 @@ import {
   saveCredentials,
   saveLoggedInEmail,
 } from "@/lib/storage";
-import { AdminAccessDeniedModal } from "@/components/admin-access-denied-modal";
-import bcrypt from "@/lib/bcrypt";
-import { isAdminRole } from "@/lib/isAdminRole";
 import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
 import * as Device from "expo-device";
@@ -22,7 +22,6 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -125,7 +124,8 @@ export default function LoginScreen() {
       if (emailError) {
         Alert.alert(
           "Login Failed",
-          emailError.message || "An error occurred during login. Please try again.",
+          emailError.message ||
+            "An error occurred during login. Please try again.",
         );
         return;
       }
@@ -305,13 +305,19 @@ export default function LoginScreen() {
           verificationCode.trim(),
         );
         if (!valid) {
-          Alert.alert("Invalid Code", "The verification code is incorrect or expired.");
+          Alert.alert(
+            "Invalid Code",
+            "The verification code is incorrect or expired.",
+          );
           return;
         }
       } else {
         const expiresAt = sentVerificationCodeExpiresAt ?? 0;
         if (!sentVerificationCode || Date.now() > expiresAt) {
-          Alert.alert("Code Expired", "Please request a new verification code.");
+          Alert.alert(
+            "Code Expired",
+            "Please request a new verification code.",
+          );
           return;
         }
         if (verificationCode.trim() !== sentVerificationCode) {
@@ -400,211 +406,77 @@ export default function LoginScreen() {
     setForgotEmailMessageType(null);
   };
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.keyboardAvoidingView}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
-      >
-        <View style={styles.scrollContent}>
-          <View style={styles.phoneFrame}>
-            {/* Green Background Section */}
-            <View style={styles.greenBackground}>
-              <View style={styles.header} />
+  const renderOtpBoxes = (code: string) => {
+    const slots = 6;
+    const normalized = code.slice(0, slots);
+    return (
+      <View style={styles.otpBoxesRow}>
+        {Array.from({ length: slots }).map((_, index) => {
+          const char = normalized[index] ?? "";
+          return (
+            <View
+              key={`otp-box-${index}`}
+              style={[
+                styles.otpBox,
+                index === normalized.length && normalized.length < slots
+                  ? styles.otpBoxActive
+                  : null,
+              ]}
+            >
+              <Text style={styles.otpBoxText}>{char}</Text>
             </View>
+          );
+        })}
+      </View>
+    );
+  };
 
-            {/* White Card Section */}
-            <View style={styles.cardContainer}>
-              <View style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.logoContainer}>
-                    <Image
-                      source={require("@/assets/images/agri_hydra_logo.png")}
-                      style={styles.logo}
-                      resizeMode="contain"
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.form}>
-                  <View style={styles.inputWrapper}>
-                    <FontAwesome
-                      name="user"
-                      size={16}
-                      color={colors.brandGrayText}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      placeholder="Email or Phone number"
-                      placeholderTextColor={colors.brandGrayText}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      value={emailOrPhone}
-                      onChangeText={setEmailOrPhone}
-                      editable={!loading}
-                      style={styles.input}
-                    />
-                  </View>
-
-                  <View style={styles.inputWrapper}>
-                    <FontAwesome
-                      name="lock"
-                      size={18}
-                      color={colors.brandGrayText}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      placeholder="Password"
-                      placeholderTextColor={colors.brandGrayText}
-                      secureTextEntry={!showPassword}
-                      value={password}
-                      onChangeText={setPassword}
-                      editable={!loading}
-                      style={styles.input}
-                    />
-                    <TouchableOpacity
-                      style={styles.togglePasswordButton}
-                      activeOpacity={0.7}
-                      onPress={() => setShowPassword((prev) => !prev)}
-                    >
-                      <FontAwesome
-                        name={showPassword ? "eye-slash" : "eye"}
-                        size={18}
-                        color={colors.brandGrayText}
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.rememberMeContainer}>
-                    <TouchableOpacity
-                      style={styles.checkboxContainer}
-                      activeOpacity={0.7}
-                      onPress={() => setRememberMe(!rememberMe)}
-                      disabled={loading}
-                    >
-                      <View
-                        style={[
-                          styles.checkbox,
-                          rememberMe && styles.checkboxChecked,
-                        ]}
-                      >
-                        {rememberMe && (
-                          <FontAwesome name="check" size={12} color="#fff" />
-                        )}
-                      </View>
-                      <Text style={styles.rememberMeText}>Remember Me</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.forgotWrapper}
-                      activeOpacity={0.7}
-                      onPress={() => setShowForgotPassword(true)}
-                    >
-                      <Text style={styles.forgotText}>Forgot Password?</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.loginButton,
-                      loading && styles.loginButtonDisabled,
-                    ]}
-                    activeOpacity={0.9}
-                    onPress={handleLogin}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.loginButtonText}>LOGIN</Text>
-                    )}
-                  </TouchableOpacity>
-
-                  <View style={styles.inlineFooter}>
-                    <Text style={styles.inlineFooterText}>
-                      Don&apos;t have an account?
-                    </Text>
-                    <Link href="/UserManagement/signup" asChild>
-                      <TouchableOpacity activeOpacity={0.7}>
-                        <Text style={styles.inlineFooterLink}>
-                          Create Account
-                        </Text>
-                      </TouchableOpacity>
-                    </Link>
-                  </View>
-                </View>
-              </View>
-            </View>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-
-      {loading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#fff" />
-          <Text style={styles.loadingText}>Signing in...</Text>
-        </View>
-      )}
-
-      {/* Forgot Password Modal */}
-      {showForgotPassword && (
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.modalKeyboardAvoidingView}
-            keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+  if (showForgotPassword) {
+    return (
+      <SafeAreaView style={styles.forgotSafeArea}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.forgotKeyboardAvoidingView}
+        >
+          <ScrollView
+            contentContainerStyle={styles.forgotScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <View style={styles.modal}>
-              <TouchableOpacity
-                style={styles.modalCloseButton}
-                onPress={() => {
-                  setShowForgotPassword(false);
-                  resetForgotPasswordForm();
-                }}
-              >
-                <FontAwesome
-                  name="times"
-                  size={20}
-                  color={colors.brandGrayText}
-                />
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.forgotBackButton}
+              onPress={() => {
+                setShowForgotPassword(false);
+                resetForgotPasswordForm();
+              }}
+              activeOpacity={0.8}
+            >
+              <FontAwesome name="chevron-left" size={14} color="#4B5563" />
+            </TouchableOpacity>
 
+            <View style={styles.forgotContent}>
               {forgotStep === 1 && (
-                <ScrollView
-                  contentContainerStyle={styles.modalContent}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
-                >
-                  <Image
-                    source={require("@/assets/email-address.png")}
-                    style={styles.modalIconImage}
-                    resizeMode="contain"
-                  />
-                  <Text style={styles.modalTitle}>Forgot Password?</Text>
-                  <Text style={styles.modalDescription}>
-                    Enter your email address to receive a verification code
+                <>
+                  <Text style={styles.forgotScreenTitle}>Forgot Password?</Text>
+                  <Text style={styles.forgotScreenDescription}>
+                    Enter your email address to get the password reset code.
                   </Text>
-                  <View style={styles.inputContainer}>
-                    <FontAwesome
-                      name="envelope"
-                      size={16}
-                      color={colors.brandGrayText}
-                      style={styles.modalInputIcon}
-                    />
-                    <TextInput
-                      style={[styles.inputField, { letterSpacing: 0 }]}
-                      placeholder="Email"
-                      placeholderTextColor={colors.brandGrayText}
-                      value={forgotEmail}
-                      onChangeText={(text) => {
-                        setForgotEmail(text);
-                        setForgotEmailMessage(null);
-                        setForgotEmailMessageType(null);
-                      }}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                    />
-                  </View>
+
+                  <Text style={styles.forgotLabel}>Email Address</Text>
+                  <TextInput
+                    style={styles.forgotInput}
+                    placeholder="you@gmail.com"
+                    placeholderTextColor="#9CA3AF"
+                    value={forgotEmail}
+                    onChangeText={(text) => {
+                      setForgotEmail(text);
+                      setForgotEmailMessage(null);
+                      setForgotEmailMessageType(null);
+                    }}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+
                   {forgotEmailMessage && (
                     <Text
                       style={[
@@ -617,136 +489,256 @@ export default function LoginScreen() {
                       {forgotEmailMessage}
                     </Text>
                   )}
+
                   <TouchableOpacity
                     style={[
-                      styles.sendButton,
+                      styles.forgotPrimaryButton,
                       loading && styles.sendButtonDisabled,
                     ]}
                     onPress={handleSendCode}
                     disabled={loading}
+                    activeOpacity={0.9}
                   >
-                    <Text style={styles.sendButtonText}>
+                    <Text style={styles.forgotPrimaryButtonText}>
                       {loading ? "Sending..." : "Send Code"}
                     </Text>
                   </TouchableOpacity>
-                </ScrollView>
+                </>
               )}
 
               {forgotStep === 2 && (
-                <ScrollView
-                  contentContainerStyle={styles.modalContent}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
-                >
-                  <Image
-                    source={require("@/assets/two-factor-auth.png")}
-                    style={styles.modalIconImage}
-                    resizeMode="contain"
-                  />
-                  <Text style={styles.modalTitle}>Enter Verification Code</Text>
-                  <Text style={styles.modalDescription}>
-                    We&apos;ve sent a 6-digit code to {forgotEmail}
+                <>
+                  <Text style={styles.forgotScreenTitle}>OTP Verification</Text>
+                  <Text style={styles.forgotScreenDescription}>
+                    Enter the verification code we just sent.
                   </Text>
-                  <View style={styles.codeInputContainer}>
-                    <TextInput
-                      style={styles.codeInput}
-                      placeholder="000000"
-                      placeholderTextColor={colors.brandGrayText}
-                      value={verificationCode}
-                      onChangeText={setVerificationCode}
-                      keyboardType="numeric"
-                      maxLength={6}
-                      textAlign="center"
-                    />
-                  </View>
+
+                  {renderOtpBoxes(verificationCode)}
+
+                  <TextInput
+                    style={styles.hiddenOtpInput}
+                    value={verificationCode}
+                    onChangeText={(text) =>
+                      setVerificationCode(text.replace(/\D/g, "").slice(0, 6))
+                    }
+                    keyboardType="numeric"
+                    maxLength={6}
+                    autoFocus
+                  />
+
                   <TouchableOpacity
-                    style={styles.sendButton}
+                    style={styles.forgotPrimaryButton}
                     onPress={handleVerifyCode}
+                    activeOpacity={0.9}
                   >
-                    <Text style={styles.sendButtonText}>Verify Code</Text>
+                    <Text style={styles.forgotPrimaryButtonText}>Verify</Text>
                   </TouchableOpacity>
+
+                  <Text style={styles.resendCountdownText}>
+                    {countdown > 0
+                      ? `Resend OTP in ${countdown}s`
+                      : "Resend OTP in 0s"}
+                  </Text>
+
                   <TouchableOpacity
-                    style={styles.resendButton}
+                    style={styles.resendInlineButton}
                     onPress={handleSendCode}
                     disabled={countdown > 0}
+                    activeOpacity={0.8}
                   >
                     <Text
                       style={[
-                        styles.resendButtonText,
+                        styles.resendInlineButtonText,
                         countdown > 0 && styles.resendButtonTextDisabled,
                       ]}
                     >
-                      {countdown > 0
-                        ? `Resend code in ${countdown}s`
-                        : "Resend code"}
+                      Resend OTP
                     </Text>
                   </TouchableOpacity>
-                </ScrollView>
+                </>
               )}
 
               {forgotStep === 3 && (
-                <ScrollView
-                  contentContainerStyle={styles.modalContent}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
-                >
-                  <Image
-                    source={require("@/assets/change-pass.png")}
-                    style={styles.modalIconImage}
-                    resizeMode="contain"
-                  />
-                  <Text style={styles.modalTitle}>New Password</Text>
-                  <Text style={styles.modalDescription}>
-                    Enter your new password
+                <>
+                  <Text style={styles.forgotScreenTitle}>
+                    Create New Password
                   </Text>
-                  <View style={styles.inputContainer}>
-                    <FontAwesome
-                      name="lock"
-                      size={16}
-                      color={colors.brandGrayText}
-                      style={styles.modalInputIcon}
-                    />
-                    <TextInput
-                      style={[styles.inputField, { letterSpacing: 0 }]}
-                      placeholder="New password"
-                      placeholderTextColor={colors.brandGrayText}
-                      value={newPassword}
-                      onChangeText={setNewPassword}
-                      secureTextEntry
-                    />
-                  </View>
-                  <View style={styles.inputContainer}>
-                    <FontAwesome
-                      name="lock"
-                      size={16}
-                      color={colors.brandGrayText}
-                      style={styles.modalInputIcon}
-                    />
-                    <TextInput
-                      style={[styles.inputField, { letterSpacing: 0 }]}
-                      placeholder="Confirm new password"
-                      placeholderTextColor={colors.brandGrayText}
-                      value={confirmPassword}
-                      onChangeText={setConfirmPassword}
-                      secureTextEntry
-                    />
-                  </View>
+                  <Text style={styles.forgotScreenDescription}>
+                    Enter and confirm your new password.
+                  </Text>
+
+                  <Text style={styles.forgotLabel}>New Password</Text>
+                  <TextInput
+                    style={styles.forgotInput}
+                    placeholder="New password"
+                    placeholderTextColor="#9CA3AF"
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    secureTextEntry
+                  />
+
+                  <Text style={styles.forgotLabel}>Confirm Password</Text>
+                  <TextInput
+                    style={styles.forgotInput}
+                    placeholder="Confirm password"
+                    placeholderTextColor="#9CA3AF"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    secureTextEntry
+                  />
+
                   <TouchableOpacity
                     style={[
-                      styles.sendButton,
+                      styles.forgotPrimaryButton,
                       loading && styles.sendButtonDisabled,
                     ]}
                     onPress={handleResetPassword}
                     disabled={loading}
+                    activeOpacity={0.9}
                   >
-                    <Text style={styles.sendButtonText}>
+                    <Text style={styles.forgotPrimaryButtonText}>
                       {loading ? "Resetting..." : "Reset Password"}
                     </Text>
                   </TouchableOpacity>
-                </ScrollView>
+                </>
               )}
             </View>
-          </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardAvoidingView}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+      >
+        <ScrollView
+          bounces={false}
+          contentContainerStyle={styles.loginScrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.loginContainer}>
+            <Text style={styles.loginTitle}>Login</Text>
+            <Text style={styles.loginSubtitle}>
+              Welcome back to the AgriHydra
+            </Text>
+
+            <View style={styles.form}>
+              <Text style={styles.loginFieldLabel}>Email or Phone number</Text>
+              <View>
+                <TextInput
+                  placeholder="you@gmail.com or 09123456789"
+                  placeholderTextColor={colors.brandGrayText}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="default"
+                  value={emailOrPhone}
+                  onChangeText={setEmailOrPhone}
+                  editable={!loading}
+                  style={styles.loginInput}
+                />
+              </View>
+
+              <View style={styles.passwordLabelRow}>
+                <Text style={styles.loginFieldLabel}>Password</Text>
+                <TouchableOpacity
+                  style={styles.forgotWrapper}
+                  activeOpacity={0.7}
+                  onPress={() => setShowForgotPassword(true)}
+                >
+                  <Text style={styles.forgotText}>Forgot Password?</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.brandGrayText}
+                  secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={setPassword}
+                  editable={!loading}
+                  style={styles.loginInput}
+                />
+                <TouchableOpacity
+                  style={styles.togglePasswordButton}
+                  activeOpacity={0.7}
+                  onPress={() => setShowPassword((prev) => !prev)}
+                >
+                  <FontAwesome
+                    name={showPassword ? "eye-slash" : "eye"}
+                    size={18}
+                    color={colors.brandGrayText}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.checkboxContainer}
+                activeOpacity={0.7}
+                onPress={() => setRememberMe(!rememberMe)}
+                disabled={loading}
+              >
+                <View
+                  style={[
+                    styles.checkbox,
+                    rememberMe && styles.checkboxChecked,
+                  ]}
+                >
+                  {rememberMe && (
+                    <FontAwesome name="check" size={12} color="#fff" />
+                  )}
+                </View>
+                <Text style={styles.rememberMeText}>Keep me signed in</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.loginButton,
+                  loading && styles.loginButtonDisabled,
+                ]}
+                activeOpacity={0.9}
+                onPress={handleLogin}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.loginButtonText}>Login</Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.separatorRow}>
+                <View style={styles.separatorLine} />
+                <Text style={styles.separatorText}>or</Text>
+                <View style={styles.separatorLine} />
+              </View>
+
+              <View style={styles.inlineFooter}>
+                <Link href="/UserManagement/signup" asChild>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    style={styles.createAccountButton}
+                  >
+                    <Text style={styles.createAccountButtonText}>
+                      Create Account
+                    </Text>
+                  </TouchableOpacity>
+                </Link>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={styles.loadingText}>Signing in...</Text>
         </View>
       )}
 
@@ -768,6 +760,51 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+  },
+  loginScrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: scale(24),
+    paddingTop: scale(36),
+    paddingBottom: scale(28),
+  },
+  loginContainer: {
+    flex: 1,
+  },
+  loginTitle: {
+    fontFamily: fonts.bold,
+    fontSize: fontScale(40),
+    color: "#111827",
+  },
+  loginSubtitle: {
+    marginTop: scale(4),
+    marginBottom: scale(24),
+    fontFamily: fonts.regular,
+    fontSize: fontScale(14),
+    color: "#6B7280",
+  },
+  loginFieldLabel: {
+    fontFamily: fonts.medium,
+    fontSize: fontScale(14),
+    color: "#1F2937",
+    marginBottom: scale(8),
+  },
+  passwordLabelRow: {
+    marginTop: scale(2),
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  loginInput: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 12,
+    fontFamily: fonts.regular,
+    fontSize: fontScale(14),
+    color: "#111827",
+    backgroundColor: "#fff",
   },
   phoneFrame: {
     flex: 1,
@@ -887,7 +924,7 @@ const styles = StyleSheet.create({
   },
   rememberMeText: {
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: 13,
     color: "#000",
   },
   forgotWrapper: {
@@ -899,43 +936,61 @@ const styles = StyleSheet.create({
     color: colors.brandBlue,
   },
   loginButton: {
-    backgroundColor: colors.brandGreen,
-    borderRadius: 12,
-    paddingVertical: 2,
-    marginTop: 8,
+    backgroundColor: "#3E9B4F",
+    borderRadius: 999,
+    marginTop: scale(8),
     justifyContent: "center",
     alignItems: "center",
-    minHeight: 45,
-    shadowColor: colors.brandGreen,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    minHeight: 44,
   },
   loginButtonDisabled: {
     opacity: 0.6,
   },
   loginButtonText: {
     fontFamily: fonts.semibold,
-    fontSize: 12,
+    fontSize: 14,
     color: "#fff",
     textAlign: "center",
   },
   inlineFooter: {
-    marginTop: 15,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 4,
+    marginTop: 10,
   },
-  inlineFooterText: {
+  separatorText: {
     fontFamily: fonts.regular,
     fontSize: 12,
     color: colors.brandGrayText,
   },
+  separatorRow: {
+    marginTop: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  separatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#E5E7EB",
+  },
+  createAccountButton: {
+    backgroundColor: "#2F5BFF",
+    borderRadius: 999,
+    minHeight: 44,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  createAccountButtonText: {
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: "#fff",
+  },
+  inlineFooterText: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    color: colors.brandGrayText,
+  },
   inlineFooterLink: {
     fontFamily: fonts.medium,
-    fontSize: 12,
+    fontSize: 15,
     color: colors.brandBlue,
   },
   loadingOverlay: {
@@ -954,146 +1009,134 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.brandGrayText,
   },
-  // Modal styles
-  modalOverlay: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-  modalKeyboardAvoidingView: {
-    width: "100%",
-    maxWidth: 340,
-  },
-  modal: {
+  forgotSafeArea: {
+    flex: 1,
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 20,
-    width: "100%",
-    position: "relative",
   },
-  modalCloseButton: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    padding: 8,
-    zIndex: 10,
+  forgotKeyboardAvoidingView: {
+    flex: 1,
   },
-  modalContent: {
+  forgotScrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: scale(24),
+    paddingTop: scale(10),
+    paddingBottom: scale(30),
+  },
+  forgotBackButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     alignItems: "center",
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  modalIconContainer: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "#f0f9f0",
     justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 20,
+    backgroundColor: "#F3F4F6",
   },
-  modalIconImage: {
-    width: 110,
-    height: 110,
-    marginBottom: 20,
+  forgotContent: {
+    marginTop: scale(34),
   },
-  modalTitle: {
+  forgotScreenTitle: {
     fontFamily: fonts.semibold,
-    fontSize: 19,
-    color: colors.brandGreen,
-    textAlign: "center",
-    marginBottom: 8,
+    fontSize: fontScale(34),
+    color: "#111827",
+    marginBottom: scale(8),
   },
-  modalDescription: {
+  forgotScreenDescription: {
     fontFamily: fonts.regular,
-    fontSize: 13,
-    color: colors.brandGrayText,
-    textAlign: "center",
-    marginBottom: 20,
-    lineHeight: 18,
-    paddingHorizontal: 8,
+    fontSize: fontScale(14),
+    color: "#6B7280",
+    lineHeight: 20,
+    marginBottom: scale(28),
   },
-  inputContainer: {
-    width: "100%",
-    marginBottom: 16,
-    position: "relative",
+  forgotLabel: {
+    fontFamily: fonts.medium,
+    fontSize: fontScale(14),
+    color: "#1F2937",
+    marginBottom: scale(8),
   },
-  modalInputIcon: {
-    position: "absolute",
-    left: 14,
-    top: 14,
-    zIndex: 1,
-  },
-  inputField: {
-    height: 46,
-    borderRadius: 8,
+  forgotInput: {
+    height: 48,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.brandGrayBorder,
-    paddingLeft: 44,
-    paddingRight: 14,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 14,
     fontFamily: fonts.regular,
-    fontSize: 15,
-    color: "#000",
-    width: "100%",
+    fontSize: fontScale(14),
+    color: "#111827",
+    backgroundColor: "#fff",
+    marginBottom: scale(14),
   },
-  codeInputContainer: {
-    width: "100%",
-    marginBottom: 20,
-  },
-  codeInput: {
-    height: 50,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.brandGrayBorder,
-    fontFamily: fonts.regular,
-    fontSize: 20,
-    color: "#000",
-    width: "100%",
-    letterSpacing: 8,
-    textAlign: "center",
-  },
-  sendButton: {
-    backgroundColor: colors.brandGreen,
-    borderRadius: 8,
-    paddingVertical: 12,
+  forgotPrimaryButton: {
+    marginTop: scale(8),
+    backgroundColor: "#3E9B4F",
+    borderRadius: 999,
+    minHeight: 44,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 10,
-    width: "100%",
+  },
+  forgotPrimaryButtonText: {
+    fontFamily: fonts.semibold,
+    fontSize: fontScale(14),
+    color: "#fff",
+  },
+  otpBoxesRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  otpBox: {
+    width: 44,
+    height: 50,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  otpBoxActive: {
+    borderColor: "#3E9B4F",
+  },
+  otpBoxText: {
+    fontFamily: fonts.semibold,
+    fontSize: fontScale(20),
+    color: "#111827",
+  },
+  hiddenOtpInput: {
+    position: "absolute",
+    opacity: 0,
+    width: 1,
+    height: 50,
+    left: -1000,
+  },
+  resendCountdownText: {
+    marginTop: scale(18),
+    fontFamily: fonts.regular,
+    fontSize: fontScale(13),
+    color: "#6B7280",
+    textAlign: "center",
   },
   sendButtonDisabled: {
     opacity: 0.6,
   },
-  sendButtonText: {
-    fontFamily: fonts.semibold,
-    fontSize: 16,
-    color: "#fff",
-    textAlign: "center",
-  },
-  resendButton: {
-    marginTop: 16,
+  resendInlineButton: {
+    marginTop: scale(6),
+    alignSelf: "center",
     paddingVertical: 8,
+    paddingHorizontal: 10,
   },
-  resendButtonText: {
+  resendInlineButtonText: {
     fontFamily: fonts.medium,
-    fontSize: 14,
-    color: colors.brandBlue,
+    fontSize: fontScale(14),
+    color: "#3E9B4F",
     textAlign: "center",
   },
   resendButtonTextDisabled: {
     color: colors.brandGrayText,
   },
   forgotEmailMessage: {
-    marginTop: -8,
-    marginBottom: 4,
+    marginTop: -4,
+    marginBottom: 8,
     fontFamily: fonts.regular,
-    fontSize: 13,
+    fontSize: fontScale(13),
     textAlign: "left",
     width: "100%",
   },

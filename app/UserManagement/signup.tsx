@@ -1,5 +1,5 @@
-import { fontScale, scale } from "@/lib/responsive";
 import bcrypt from "@/lib/bcrypt";
+import { fontScale, scale } from "@/lib/responsive";
 import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
 import * as Device from "expo-device";
@@ -95,16 +95,16 @@ export default function SignupScreen() {
     const phoneOk = PHONE_11_REGEX.test(phone);
     return Boolean(
       name?.trim() &&
-        email?.trim() &&
-        phoneOk &&
-        password &&
-        confirmPassword &&
-        password === confirmPassword &&
-        allPasswordRequirementsMet &&
-        !emailExists &&
-        !phoneExists &&
-        !checkingEmail &&
-        !checkingPhone,
+      email?.trim() &&
+      phoneOk &&
+      password &&
+      confirmPassword &&
+      password === confirmPassword &&
+      allPasswordRequirementsMet &&
+      !emailExists &&
+      !phoneExists &&
+      !checkingEmail &&
+      !checkingPhone,
     );
   }, [
     name,
@@ -210,9 +210,7 @@ export default function SignupScreen() {
       return true;
     }
     if (!PHONE_11_REGEX.test(phoneText)) {
-      setPhoneError(
-        "Use 11 digits starting with 09 (example: 09123456789).",
-      );
+      setPhoneError("Use 11 digits starting with 09 (example: 09123456789).");
       return false;
     }
     setPhoneError(null);
@@ -422,329 +420,319 @@ export default function SignupScreen() {
       >
         <ScrollView
           bounces={false}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={styles.signupScrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.phoneFrame}>
-            {/* Green Background Section */}
-            <View style={styles.greenBackground}>
-              <View style={styles.header}>
-                <Text style={styles.title}>Create Account</Text>
+          <View style={styles.signupContainer}>
+            <Text style={styles.signupTitle}>Sign Up</Text>
+            <Text style={styles.signupSubtitle}>Create your account</Text>
+
+            <View style={styles.form}>
+              <Text style={styles.fieldLabel}>Full name</Text>
+              <View style={styles.inputWrapper}>
+                <FontAwesome
+                  name="user"
+                  size={16}
+                  color={colors.brandGrayText}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  placeholder="Full name"
+                  placeholderTextColor={colors.brandGrayText}
+                  autoCapitalize="words"
+                  value={name}
+                  onChangeText={handleNameChange}
+                  editable={!loading}
+                  style={styles.input}
+                />
               </View>
-            </View>
+              {nameError && (
+                <Text style={styles.fieldErrorText}>{nameError}</Text>
+              )}
 
-            {/* White Card Section */}
-            <View style={styles.cardContainer}>
-              <View style={styles.card}>
-                <View style={styles.form}>
-                  <View style={styles.inputWrapper}>
+              <Text style={styles.fieldLabel}>Email Address</Text>
+              <View style={styles.inputWrapper}>
+                <FontAwesome
+                  name="envelope"
+                  size={16}
+                  color={colors.brandGrayText}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  placeholder="you@gmail.com"
+                  placeholderTextColor={colors.brandGrayText}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  value={email}
+                  onChangeText={handleEmailChange}
+                  editable={!loading}
+                  style={styles.input}
+                />
+                {checkingEmail && (
+                  <ActivityIndicator
+                    size="small"
+                    color={colors.brandGrayText}
+                    style={styles.togglePasswordButton}
+                  />
+                )}
+                {!checkingEmail &&
+                  email &&
+                  email.includes("@") &&
+                  email.toLowerCase().includes("gmail.com") &&
+                  !emailError && (
                     <FontAwesome
-                      name="user"
-                      size={16}
-                      color={colors.brandGrayText}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      placeholder="Full name"
-                      placeholderTextColor={colors.brandGrayText}
-                      autoCapitalize="words"
-                      value={name}
-                      onChangeText={handleNameChange}
-                      editable={!loading}
-                      style={styles.input}
-                    />
-                  </View>
-                  {nameError && (
-                    <Text style={styles.fieldErrorText}>{nameError}</Text>
-                  )}
-
-                  <View style={styles.inputWrapper}>
-                    <FontAwesome
-                      name="envelope"
-                      size={16}
-                      color={colors.brandGrayText}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      placeholder="Email"
-                      placeholderTextColor={colors.brandGrayText}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      value={email}
-                      onChangeText={handleEmailChange}
-                      editable={!loading}
-                      style={styles.input}
-                    />
-                    {checkingEmail && (
-                      <ActivityIndicator
-                        size="small"
-                        color={colors.brandGrayText}
-                        style={styles.togglePasswordButton}
-                      />
-                    )}
-                    {!checkingEmail &&
-                      email &&
-                      email.includes("@") &&
-                      email.toLowerCase().includes("gmail.com") &&
-                      !emailError && (
-                        <FontAwesome
-                          name={emailExists ? "times-circle" : "check-circle"}
-                          size={18}
-                          color={emailExists ? "#EF4444" : colors.brandGreen}
-                          style={styles.togglePasswordButton}
-                        />
-                      )}
-                  </View>
-                  {emailError && (
-                    <Text style={styles.fieldErrorText}>{emailError}</Text>
-                  )}
-                  {!emailError && emailExists && (
-                    <Text style={styles.fieldErrorText}>
-                      This email is already registered. Please use a different
-                      email.
-                    </Text>
-                  )}
-
-                  <View style={styles.inputWrapper}>
-                    <FontAwesome
-                      name="phone"
+                      name={emailExists ? "times-circle" : "check-circle"}
                       size={18}
-                      color={colors.brandGrayText}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      placeholder="09123456789"
-                      placeholderTextColor={colors.brandGrayText}
-                      keyboardType="phone-pad"
-                      value={phone}
-                      onChangeText={handlePhoneChange}
-                      editable={!loading}
-                      style={styles.input}
-                      maxLength={11}
-                    />
-                    {checkingPhone && (
-                      <ActivityIndicator
-                        size="small"
-                        color={colors.brandGrayText}
-                        style={styles.togglePasswordButton}
-                      />
-                    )}
-                    {!checkingPhone &&
-                      phone.length === 11 &&
-                      PHONE_11_REGEX.test(phone) &&
-                      !phoneError && (
-                        <FontAwesome
-                          name={phoneExists ? "times-circle" : "check-circle"}
-                          size={18}
-                          color={phoneExists ? "#EF4444" : colors.brandGreen}
-                          style={styles.togglePasswordButton}
-                        />
-                      )}
-                  </View>
-                  {phoneError && (
-                    <Text style={styles.fieldErrorText}>{phoneError}</Text>
-                  )}
-                  {!phoneError && phoneExists && (
-                    <Text style={styles.fieldErrorText}>
-                      This phone number is already registered. Please use a
-                      different number.
-                    </Text>
-                  )}
-
-                  <View style={styles.inputWrapper}>
-                    <FontAwesome
-                      name="lock"
-                      size={18}
-                      color={colors.brandGrayText}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      placeholder="Password"
-                      placeholderTextColor={colors.brandGrayText}
-                      secureTextEntry={!showPassword}
-                      value={password}
-                      onChangeText={setPassword}
-                      editable={!loading}
-                      style={styles.input}
-                    />
-                    <TouchableOpacity
+                      color={emailExists ? "#EF4444" : colors.brandGreen}
                       style={styles.togglePasswordButton}
-                      activeOpacity={0.7}
-                      onPress={() => setShowPassword((prev) => !prev)}
-                      disabled={loading}
-                    >
-                      <FontAwesome
-                        name={showPassword ? "eye-slash" : "eye"}
-                        size={18}
-                        color={colors.brandGrayText}
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Password Requirements */}
-                  {password.length > 0 && !allPasswordRequirementsMet && (
-                    <View style={styles.passwordRequirements}>
-                      <Text style={styles.requirementsTitle}>
-                        Password must:
-                      </Text>
-                      <View style={styles.requirementItem}>
-                        <FontAwesome
-                          name={
-                            passwordRequirements.length
-                              ? "check-circle"
-                              : "times-circle"
-                          }
-                          size={16}
-                          color={
-                            passwordRequirements.length
-                              ? colors.brandGreen
-                              : "#EF4444"
-                          }
-                        />
-                        <Text
-                          style={[
-                            styles.requirementText,
-                            passwordRequirements.length &&
-                              styles.requirementMet,
-                          ]}
-                        >
-                          Contain 8 to 30 characters
-                        </Text>
-                      </View>
-                      <View style={styles.requirementItem}>
-                        <FontAwesome
-                          name={
-                            passwordRequirements.uppercase
-                              ? "check-circle"
-                              : "times-circle"
-                          }
-                          size={16}
-                          color={
-                            passwordRequirements.uppercase
-                              ? colors.brandGreen
-                              : "#EF4444"
-                          }
-                        />
-                        <Text
-                          style={[
-                            styles.requirementText,
-                            passwordRequirements.uppercase &&
-                              styles.requirementMet,
-                          ]}
-                        >
-                          Contain both lower and uppercase letters
-                        </Text>
-                      </View>
-                      <View style={styles.requirementItem}>
-                        <FontAwesome
-                          name={
-                            passwordRequirements.number
-                              ? "check-circle"
-                              : "times-circle"
-                          }
-                          size={16}
-                          color={
-                            passwordRequirements.number
-                              ? colors.brandGreen
-                              : "#EF4444"
-                          }
-                        />
-                        <Text
-                          style={[
-                            styles.requirementText,
-                            passwordRequirements.number &&
-                              styles.requirementMet,
-                          ]}
-                        >
-                          Contain one number
-                        </Text>
-                      </View>
-                      <View style={styles.requirementItem}>
-                        <FontAwesome
-                          name={
-                            passwordRequirements.symbol
-                              ? "check-circle"
-                              : "times-circle"
-                          }
-                          size={16}
-                          color={
-                            passwordRequirements.symbol
-                              ? colors.brandGreen
-                              : "#EF4444"
-                          }
-                        />
-                        <Text
-                          style={[
-                            styles.requirementText,
-                            passwordRequirements.symbol &&
-                              styles.requirementMet,
-                          ]}
-                        >
-                          Contain one special character !@#$%^&*()_+
-                        </Text>
-                      </View>
-                    </View>
+                    />
                   )}
+              </View>
+              {emailError && (
+                <Text style={styles.fieldErrorText}>{emailError}</Text>
+              )}
+              {!emailError && emailExists && (
+                <Text style={styles.fieldErrorText}>
+                  This email is already registered. Please use a different
+                  email.
+                </Text>
+              )}
 
-                  <View style={styles.inputWrapper}>
+              <Text style={styles.fieldLabel}>Phone number</Text>
+              <View style={styles.inputWrapper}>
+                <FontAwesome
+                  name="phone"
+                  size={18}
+                  color={colors.brandGrayText}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  placeholder="09123456789"
+                  placeholderTextColor={colors.brandGrayText}
+                  keyboardType="phone-pad"
+                  value={phone}
+                  onChangeText={handlePhoneChange}
+                  editable={!loading}
+                  style={styles.input}
+                  maxLength={11}
+                />
+                {checkingPhone && (
+                  <ActivityIndicator
+                    size="small"
+                    color={colors.brandGrayText}
+                    style={styles.togglePasswordButton}
+                  />
+                )}
+                {!checkingPhone &&
+                  phone.length === 11 &&
+                  PHONE_11_REGEX.test(phone) &&
+                  !phoneError && (
                     <FontAwesome
-                      name="lock"
+                      name={phoneExists ? "times-circle" : "check-circle"}
                       size={18}
-                      color={colors.brandGrayText}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      placeholder="Confirm password"
-                      placeholderTextColor={colors.brandGrayText}
-                      secureTextEntry={!showConfirmPassword}
-                      value={confirmPassword}
-                      onChangeText={setConfirmPassword}
-                      editable={!loading}
-                      style={styles.input}
-                    />
-                    <TouchableOpacity
+                      color={phoneExists ? "#EF4444" : colors.brandGreen}
                       style={styles.togglePasswordButton}
-                      activeOpacity={0.7}
-                      onPress={() => setShowConfirmPassword((prev) => !prev)}
-                      disabled={loading}
+                    />
+                  )}
+              </View>
+              {phoneError && (
+                <Text style={styles.fieldErrorText}>{phoneError}</Text>
+              )}
+              {!phoneError && phoneExists && (
+                <Text style={styles.fieldErrorText}>
+                  This phone number is already registered. Please use a
+                  different number.
+                </Text>
+              )}
+
+              <Text style={styles.fieldLabel}>Password</Text>
+              <View style={styles.inputWrapper}>
+                <FontAwesome
+                  name="lock"
+                  size={18}
+                  color={colors.brandGrayText}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  placeholder="Password"
+                  placeholderTextColor={colors.brandGrayText}
+                  secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={setPassword}
+                  editable={!loading}
+                  style={styles.input}
+                />
+                <TouchableOpacity
+                  style={styles.togglePasswordButton}
+                  activeOpacity={0.7}
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  disabled={loading}
+                >
+                  <FontAwesome
+                    name={showPassword ? "eye-slash" : "eye"}
+                    size={18}
+                    color={colors.brandGrayText}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* Password Requirements */}
+              {password.length > 0 && !allPasswordRequirementsMet && (
+                <View style={styles.passwordRequirements}>
+                  <Text style={styles.requirementsTitle}>Password must:</Text>
+                  <View style={styles.requirementItem}>
+                    <FontAwesome
+                      name={
+                        passwordRequirements.length
+                          ? "check-circle"
+                          : "times-circle"
+                      }
+                      size={16}
+                      color={
+                        passwordRequirements.length
+                          ? colors.brandGreen
+                          : "#EF4444"
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.requirementText,
+                        passwordRequirements.length && styles.requirementMet,
+                      ]}
                     >
-                      <FontAwesome
-                        name={showConfirmPassword ? "eye-slash" : "eye"}
-                        size={18}
-                        color={colors.brandGrayText}
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.signupButton,
-                      (loading || !canSubmit) && styles.signupButtonDisabled,
-                    ]}
-                    activeOpacity={0.9}
-                    onPress={handleSignup}
-                    disabled={loading || !canSubmit}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.signupButtonText}>SIGN UP</Text>
-                    )}
-                  </TouchableOpacity>
-
-                  <View style={styles.inlineFooter}>
-                    <Text style={styles.inlineFooterText}>
-                      Already have an account?
+                      Contain 8 to 30 characters
                     </Text>
-                    <Link href="/UserManagement/login" asChild>
-                      <TouchableOpacity activeOpacity={0.7}>
-                        <Text style={styles.inlineFooterLink}>Sign In</Text>
-                      </TouchableOpacity>
-                    </Link>
+                  </View>
+                  <View style={styles.requirementItem}>
+                    <FontAwesome
+                      name={
+                        passwordRequirements.uppercase
+                          ? "check-circle"
+                          : "times-circle"
+                      }
+                      size={16}
+                      color={
+                        passwordRequirements.uppercase
+                          ? colors.brandGreen
+                          : "#EF4444"
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.requirementText,
+                        passwordRequirements.uppercase && styles.requirementMet,
+                      ]}
+                    >
+                      Contain both lower and uppercase letters
+                    </Text>
+                  </View>
+                  <View style={styles.requirementItem}>
+                    <FontAwesome
+                      name={
+                        passwordRequirements.number
+                          ? "check-circle"
+                          : "times-circle"
+                      }
+                      size={16}
+                      color={
+                        passwordRequirements.number
+                          ? colors.brandGreen
+                          : "#EF4444"
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.requirementText,
+                        passwordRequirements.number && styles.requirementMet,
+                      ]}
+                    >
+                      Contain one number
+                    </Text>
+                  </View>
+                  <View style={styles.requirementItem}>
+                    <FontAwesome
+                      name={
+                        passwordRequirements.symbol
+                          ? "check-circle"
+                          : "times-circle"
+                      }
+                      size={16}
+                      color={
+                        passwordRequirements.symbol
+                          ? colors.brandGreen
+                          : "#EF4444"
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.requirementText,
+                        passwordRequirements.symbol && styles.requirementMet,
+                      ]}
+                    >
+                      Contain one special character !@#$%^&*()_+
+                    </Text>
                   </View>
                 </View>
+              )}
+
+              <Text style={styles.fieldLabel}>Confirm password</Text>
+              <View style={styles.inputWrapper}>
+                <FontAwesome
+                  name="lock"
+                  size={18}
+                  color={colors.brandGrayText}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  placeholder="Confirm password"
+                  placeholderTextColor={colors.brandGrayText}
+                  secureTextEntry={!showConfirmPassword}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  editable={!loading}
+                  style={styles.input}
+                />
+                <TouchableOpacity
+                  style={styles.togglePasswordButton}
+                  activeOpacity={0.7}
+                  onPress={() => setShowConfirmPassword((prev) => !prev)}
+                  disabled={loading}
+                >
+                  <FontAwesome
+                    name={showConfirmPassword ? "eye-slash" : "eye"}
+                    size={18}
+                    color={colors.brandGrayText}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.signupButton,
+                  (loading || !canSubmit) && styles.signupButtonDisabled,
+                ]}
+                activeOpacity={0.9}
+                onPress={handleSignup}
+                disabled={loading || !canSubmit}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.signupButtonText}>Sign Up</Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.inlineFooter}>
+                <Text style={styles.inlineFooterText}>
+                  Already have an account?
+                </Text>
+                <Link href="/UserManagement/login" asChild>
+                  <TouchableOpacity activeOpacity={0.7}>
+                    <Text style={styles.inlineFooterLink}>Sign In</Text>
+                  </TouchableOpacity>
+                </Link>
               </View>
             </View>
           </View>
@@ -765,46 +753,36 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
   },
-  phoneFrame: {
+  signupScrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: scale(24),
+    paddingTop: scale(36),
+    paddingBottom: scale(28),
+  },
+  signupContainer: {
     flex: 1,
-    backgroundColor: "#fff",
   },
-  greenBackground: {
-    backgroundColor: colors.brandGreen,
-    paddingTop: scale(40),
-    paddingBottom: scale(130),
-    paddingHorizontal: scale(28),
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-  },
-  header: {
-    alignItems: "center",
-    gap: 12,
-  },
-  title: {
+  signupTitle: {
     fontFamily: fonts.bold,
-    fontSize: fontScale(32),
-    color: "#fff",
-    textAlign: "center",
-    marginTop: 8,
+    fontSize: fontScale(40),
+    color: "#111827",
   },
-  cardContainer: {
-    marginTop: -scale(80),
-    paddingHorizontal: scale(20),
-    paddingBottom: scale(40),
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 24,
-    padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 2,
+  signupSubtitle: {
+    marginTop: scale(4),
+    marginBottom: scale(20),
+    fontFamily: fonts.regular,
+    fontSize: fontScale(14),
+    color: "#6B7280",
   },
   form: {
-    gap: 16,
+    gap: 8,
+  },
+  fieldLabel: {
+    fontFamily: fonts.medium,
+    fontSize: fontScale(14),
+    color: "#1F2937",
+    marginBottom: scale(8),
+    marginTop: scale(8),
   },
   inputWrapper: {
     position: "relative",
@@ -816,42 +794,36 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   input: {
-    height: scale(50),
-    borderRadius: 12,
+    height: scale(48),
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.brandGrayBorder,
+    borderColor: "#E5E7EB",
     paddingLeft: 48,
-    paddingRight: 48,
+    paddingRight: 42,
     fontFamily: fonts.regular,
-    fontSize: 12,
-    color: "#000",
-    backgroundColor: "#F8F8F8",
+    fontSize: 14,
+    color: "#111827",
+    backgroundColor: "#fff",
   },
   signupButton: {
-    backgroundColor: colors.brandGreen,
-    borderRadius: 12,
-    paddingVertical: 2,
-    marginTop: 8,
+    backgroundColor: "#3E9B4F",
+    borderRadius: 999,
+    marginTop: 14,
     justifyContent: "center",
     alignItems: "center",
-    minHeight: 50,
-    shadowColor: colors.brandGreen,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    minHeight: 44,
   },
   signupButtonDisabled: {
     opacity: 0.6,
   },
   signupButtonText: {
     fontFamily: fonts.semibold,
-    fontSize: 13,
+    fontSize: 14,
     color: "#fff",
     textAlign: "center",
   },
   inlineFooter: {
-    marginTop: 15,
+    marginTop: 16,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
@@ -859,12 +831,12 @@ const styles = StyleSheet.create({
   },
   inlineFooterText: {
     fontFamily: fonts.regular,
-    fontSize: 13,
+    fontSize: 15,
     color: colors.brandGrayText,
   },
   inlineFooterLink: {
     fontFamily: fonts.medium,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.brandBlue,
   },
   passwordRequirements: {
