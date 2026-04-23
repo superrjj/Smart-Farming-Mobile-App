@@ -9,6 +9,7 @@ import {
   BackHandler,
   Dimensions,
   Image,
+  ImageBackground,
   Modal,
   Pressable,
   ScrollView,
@@ -507,6 +508,7 @@ export default function DashboardScreen() {
   const [nextScheduleTime, setNextScheduleTime] = useState<string>("");
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [autoIrrigationModeOn, setAutoIrrigationModeOn] = useState(false);
+  
   const [autoIrrigationConfirmOpen, setAutoIrrigationConfirmOpen] =
     useState(false);
   const [autoIrrigationPendingOn, setAutoIrrigationPendingOn] = useState(true);
@@ -1211,130 +1213,171 @@ export default function DashboardScreen() {
       })
     : [];
 
+  const bottomNavItems = MENU_ITEMS.slice(0, 4);
+  const simplifiedDashboard = false;
+
+  if (simplifiedDashboard) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.bgContainer}>
+          <Image
+            source={require("@/assets/images/bg_string_beans.png")}
+            style={styles.bgImage}
+            resizeMode="cover"
+          />
+          <View style={styles.bottomNav}>
+            {bottomNavItems.map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={styles.bottomNavItem}
+                activeOpacity={0.85}
+                onPress={() => handleMenuNavigate(item.key)}
+              >
+                <FontAwesome name={item.icon as any} size={18} color="#fff" />
+                <Text style={styles.bottomNavLabel} numberOfLines={1}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* Top App Bar */}
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => setMenuOpen(true)}>
-            <FontAwesome name="bars" size={22} color="#000" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.bellButton}
-            onPress={() => setNotifOpen(true)}
-          >
-            <FontAwesome name="bell" size={20} color="#1F2937" />
-            {unreadCount > 0 && (
-              <View style={styles.bellBadgeCount}>
-                <Text style={styles.bellBadgeText}>
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
-
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* ── System Status Hero ── */}
-          <View style={styles.heroBanner}>
-            <View style={styles.heroLeft}>
-              {loadingName ? (
-                <>
-                  <View
-                    style={[styles.skeletonBlock, styles.heroEyebrowSkeleton]}
+          <ImageBackground
+            source={require("@/assets/images/bg_string_beans.png")}
+            style={styles.topHeroSection}
+            imageStyle={styles.topHeroSectionImage}
+            resizeMode="cover"
+          >
+            <View style={styles.topBar}>
+              <TouchableOpacity
+                onPress={() => setMenuOpen(true)}
+                style={styles.iconCircleButton}
+              >
+                <FontAwesome name="bars" size={22} color="#000" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.bellButton, styles.iconCircleButton]}
+                onPress={() => setNotifOpen(true)}
+              >
+                <FontAwesome name="bell" size={20} color="#1F2937" />
+                {unreadCount > 0 && (
+                  <View style={styles.bellBadgeCount}>
+                    <Text style={styles.bellBadgeText}>
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* ── System Status Hero ── */}
+            <View style={styles.heroBanner}>
+              <View style={styles.heroLeft}>
+                {loadingName ? (
+                  <>
+                    <View
+                      style={[styles.skeletonBlock, styles.heroEyebrowSkeleton]}
+                    />
+                    <View
+                      style={[styles.skeletonBlock, styles.heroGreetingSkeleton]}
+                    />
+                    <View
+                      style={[styles.skeletonBlock, styles.heroSubtitleSkeleton]}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.heroEyebrow}>SYSTEM STATUS</Text>
+                    <Text style={styles.heroGreeting}>
+                      Hi, {fullName.trim() || "Farmer"}
+                    </Text>
+                    <Text style={styles.heroSubtitle}>
+                      Monitoring your string beans.
+                    </Text>
+                  </>
+                )}
+              </View>
+              <View style={styles.heroRight}>
+                <Pressable
+                  onPress={openAutoIrrigationConfirm}
+                  style={({ pressed }) => [
+                    styles.heroAutoBadge,
+                    autoIrrigationModeOn
+                      ? styles.heroAutoBadgeOn
+                      : styles.heroAutoBadgeOff,
+                    pressed && styles.heroAutoBadgePressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    autoIrrigationModeOn
+                      ? "Automatic irrigation is on, tap to change"
+                      : "Automatic irrigation is off, tap to change"
+                  }
+                >
+                  <FontAwesome
+                    name={autoIrrigationModeOn ? "check" : "power-off"}
+                    size={10}
+                    color="#fff"
                   />
-                  <View
-                    style={[styles.skeletonBlock, styles.heroGreetingSkeleton]}
-                  />
-                  <View
-                    style={[styles.skeletonBlock, styles.heroSubtitleSkeleton]}
-                  />
-                </>
+                  <Text style={styles.heroAutoBadgeText}>
+                    {autoIrrigationModeOn ? "On" : "Off"}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
+            {/* Status chips */}
+            <View style={styles.heroChipsRow}>
+              {sensorLoading || !irrigStatus ? (
+                <View style={[styles.heroChip, styles.heroChipSkeleton]}>
+                  <View style={[styles.skeletonBlock, styles.chipSkeletonIcon]} />
+                  <View style={[styles.skeletonBlock, styles.chipSkeletonText]} />
+                </View>
               ) : (
-                <>
-                  <Text style={styles.heroEyebrow}>SYSTEM STATUS</Text>
-                  <Text style={styles.heroGreeting}>
-                    Hi, {fullName.trim() || "Farmer"}
+                <View style={[styles.heroChip, irrigStatus.chipStyle]}>
+                  <FontAwesome
+                    name={irrigStatus.icon}
+                    size={11}
+                    color={irrigStatus.textColor}
+                  />
+                  <Text
+                    style={[
+                      styles.heroChipText,
+                      { color: irrigStatus.textColor },
+                    ]}
+                  >
+                    {irrigStatus.label}
                   </Text>
-                  <Text style={styles.heroSubtitle}>
-                    Monitoring your string beans.
+                </View>
+              )}
+              {scheduleLoading ? (
+                <View style={[styles.heroChipNeutral, styles.heroChipSkeleton]}>
+                  <View style={[styles.skeletonBlock, styles.chipSkeletonIcon]} />
+                  <View style={[styles.skeletonBlock, styles.chipSkeletonText]} />
+                </View>
+              ) : (
+                <View style={styles.heroChipNeutral}>
+                  <FontAwesome name="clock-o" size={11} color="#6B7280" />
+                  <Text style={styles.heroChipNeutralText}>
+                    {nextScheduleTime === "No scheduled time"
+                      ? "No scheduled time"
+                      : `Next: ${nextScheduleTime}`}
                   </Text>
-                </>
+                </View>
               )}
             </View>
-            <View style={styles.heroRight}>
-              <Pressable
-                onPress={openAutoIrrigationConfirm}
-                style={({ pressed }) => [
-                  styles.heroAutoBadge,
-                  autoIrrigationModeOn
-                    ? styles.heroAutoBadgeOn
-                    : styles.heroAutoBadgeOff,
-                  pressed && styles.heroAutoBadgePressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  autoIrrigationModeOn
-                    ? "Automatic irrigation is on, tap to change"
-                    : "Automatic irrigation is off, tap to change"
-                }
-              >
-                <FontAwesome
-                  name={autoIrrigationModeOn ? "check" : "power-off"}
-                  size={10}
-                  color="#fff"
-                />
-                <Text style={styles.heroAutoBadgeText}>
-                  {autoIrrigationModeOn ? "On" : "Off"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-
-          {/* Status chips */}
-          <View style={styles.heroChipsRow}>
-            {sensorLoading || !irrigStatus ? (
-              <View style={[styles.heroChip, styles.heroChipSkeleton]}>
-                <View style={[styles.skeletonBlock, styles.chipSkeletonIcon]} />
-                <View style={[styles.skeletonBlock, styles.chipSkeletonText]} />
-              </View>
-            ) : (
-              <View style={[styles.heroChip, irrigStatus.chipStyle]}>
-                <FontAwesome
-                  name={irrigStatus.icon}
-                  size={11}
-                  color={irrigStatus.textColor}
-                />
-                <Text
-                  style={[
-                    styles.heroChipText,
-                    { color: irrigStatus.textColor },
-                  ]}
-                >
-                  {irrigStatus.label}
-                </Text>
-              </View>
-            )}
-            {scheduleLoading ? (
-              <View style={[styles.heroChipNeutral, styles.heroChipSkeleton]}>
-                <View style={[styles.skeletonBlock, styles.chipSkeletonIcon]} />
-                <View style={[styles.skeletonBlock, styles.chipSkeletonText]} />
-              </View>
-            ) : (
-              <View style={styles.heroChipNeutral}>
-                <FontAwesome name="clock-o" size={11} color="#6B7280" />
-                <Text style={styles.heroChipNeutralText}>
-                  {nextScheduleTime === "No scheduled time"
-                    ? "No scheduled time"
-                    : `Next: ${nextScheduleTime}`}
-                </Text>
-              </View>
-            )}
-          </View>
+          </ImageBackground>
 
           {/* ── Field Conditions Card ── */}
           <View style={styles.card}>
@@ -1828,13 +1871,65 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  bgContainer: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  bgImage: {
+    width: "100%",
+    height: "100%",
+  },
+  bottomNav: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    bottom: 12,
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#DCE7D9",
+  },
+  bottomNavItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 4,
+  },
+  bottomNavLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    color: "#9CA3AF",
+    textAlign: "center",
+  },
+  bottomNavLabelActive: {
+    color: colors.brandGreen,
+  },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
+    paddingHorizontal: 2,
     paddingVertical: 12,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "transparent",
+  },
+  iconCircleButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
   },
   scroll: { flex: 1 },
   scrollContent: {
@@ -1843,15 +1938,26 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     gap: 12,
   },
+  topHeroSection: {
+    borderRadius: 18,
+    overflow: "hidden",
+    paddingHorizontal: 14,
+    paddingBottom: 16,
+    minHeight: 250,
+    marginBottom: 2,
+  },
+  topHeroSectionImage: {
+    borderRadius: 18,
+  },
 
   // ── Hero Banner ──
   heroBanner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 4,
-    paddingTop: 6,
-    paddingBottom: 12,
+    paddingHorizontal: 2,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
   heroLeft: {
     flex: 1,
@@ -1873,8 +1979,11 @@ const styles = StyleSheet.create({
   heroSubtitle: {
     fontFamily: fonts.regular,
     fontSize: 13,
-    color: colors.brandGrayText,
-  },
+    color: "#FFFFFF",                          
+    textShadowColor: "rgba(0,0,0,1)",        
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,                      
+},
   heroEyebrowSkeleton: {
     width: 96,
     height: 10,
