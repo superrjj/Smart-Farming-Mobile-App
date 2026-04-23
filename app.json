@@ -61,8 +61,9 @@
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6b3VlcG9rYWt6dWJ3am9nbWRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyODY3MTUsImV4cCI6MjA4MDg2MjcxNX0.kqvEprlsrAmFt6qYTNDPvhWpAsLJJU_oKf-kIhlf2bc",
       "router": {},
       "eas": {
-        "projectId": "2874d9dd-084b-4bee-ab50-7bbe422369ac"
+        "projectId": "09221189-404b-4b57-8300-466db082d83e"
       }
-    }
+    },
+    "owner": "superjj.aki"
   }
 }
