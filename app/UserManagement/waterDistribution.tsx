@@ -33,6 +33,15 @@ const fonts = {
   bold: "Poppins_700Bold",
 };
 
+const AUTO_MODE_COLUMN = "auto_mode_enabled";
+const isMissingAutoModeColumnError = (error: unknown): boolean => {
+  const message =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : "";
+  return message.toLowerCase().includes(AUTO_MODE_COLUMN);
+};
+
 const AREAS_DATA = [
   {
     id: 1,
@@ -49,6 +58,7 @@ type IrrigationSystemRow = {
   farm_id: number;
   system_name: string;
   pump_status: boolean;
+  auto_mode_enabled?: boolean | null;
 };
 
 type UserProfileRow = {
@@ -94,7 +104,7 @@ export default function WaterDistributionScreen() {
         if (!email) return;
         const { data: profile, error: profileError } = await supabase
           .from("user_profiles")
-          .select("id, user_id, owner_id")
+          .select("id")
           .eq("email", email)
           .maybeSingle();
         if (profileError || !profile?.id) return;
@@ -136,11 +146,35 @@ export default function WaterDistributionScreen() {
         const { data: existingSystem, error: existingSystemError } =
           await supabase
             .from("irrigation_system")
-            .select("id, farm_id, system_name, pump_status")
+            .select("id, farm_id, system_name, pump_status, auto_mode_enabled")
             .eq("farm_id", farm.id)
             .eq("system_name", "Main Irrigation System")
             .maybeSingle();
-        if (existingSystemError) throw existingSystemError;
+        if (
+          existingSystemError &&
+          !isMissingAutoModeColumnError(existingSystemError)
+        ) {
+          throw existingSystemError;
+        }
+
+        if (
+          existingSystemError &&
+          isMissingAutoModeColumnError(existingSystemError)
+        ) {
+          const { data: existingNoAuto, error: existingNoAutoError } =
+            await supabase
+              .from("irrigation_system")
+              .select("id, farm_id, system_name, pump_status")
+              .eq("farm_id", farm.id)
+              .eq("system_name", "Main Irrigation System")
+              .maybeSingle();
+          if (existingNoAutoError) throw existingNoAutoError;
+          if (existingNoAuto) {
+            setSystem(existingNoAuto as IrrigationSystemRow);
+            setIsRunning(Boolean(existingNoAuto.pump_status));
+            return;
+          }
+        }
 
         if (existingSystem) {
           setSystem(existingSystem as IrrigationSystemRow);
@@ -156,9 +190,28 @@ export default function WaterDistributionScreen() {
             hardware_model: null,
             water_source_details: null,
             pump_status: false,
+            auto_mode_enabled: false,
           })
-          .select("id, farm_id, system_name, pump_status")
+          .select("id, farm_id, system_name, pump_status, auto_mode_enabled")
           .single();
+        if (createError && isMissingAutoModeColumnError(createError)) {
+          const { data: createdNoAuto, error: createdNoAutoError } =
+            await supabase
+              .from("irrigation_system")
+              .insert({
+                farm_id: farm.id,
+                system_name: "Main Irrigation System",
+                hardware_model: null,
+                water_source_details: null,
+                pump_status: false,
+              })
+              .select("id, farm_id, system_name, pump_status")
+              .single();
+          if (createdNoAutoError) throw createdNoAutoError;
+          setSystem(createdNoAuto as IrrigationSystemRow);
+          setIsRunning(false);
+          return;
+        }
         if (createError) throw createError;
 
         setSystem(createdSystem as IrrigationSystemRow);
@@ -193,6 +246,10 @@ export default function WaterDistributionScreen() {
               ? {
                   ...prev,
                   pump_status: nextPump,
+                  auto_mode_enabled:
+                    typeof next.auto_mode_enabled === "boolean"
+                      ? next.auto_mode_enabled
+                      : prev.auto_mode_enabled,
                 }
               : prev,
           );
@@ -241,6 +298,13 @@ export default function WaterDistributionScreen() {
 
   const handleStart = async () => {
     if (!system?.id || sending) return;
+    if (system.auto_mode_enabled) {
+      Alert.alert(
+        "Automatic Irrigation Is On",
+        "Turn off automatic irrigation from Dashboard first before manually starting the pump.",
+      );
+      return;
+    }
     setSending(true);
     try {
       const scheduleId = await getActiveScheduleId();
@@ -279,6 +343,13 @@ export default function WaterDistributionScreen() {
 
   const handleStop = async () => {
     if (!system?.id || sending) return;
+    if (system.auto_mode_enabled) {
+      Alert.alert(
+        "Automatic Irrigation Is On",
+        "Turn off automatic irrigation from Dashboard first before manually stopping the pump.",
+      );
+      return;
+    }
     setSending(true);
     try {
       const nowIso = new Date().toISOString();
@@ -391,6 +462,18 @@ export default function WaterDistributionScreen() {
                 <Text style={styles.statusLabel}>
                   {isRunning ? "System Running" : "System Stopped"}
                 </Text>
+                <View
+                  style={[
+                    styles.modeChip,
+                    system?.auto_mode_enabled
+                      ? styles.modeChipAuto
+                      : styles.modeChipManual,
+                  ]}
+                >
+                  <Text style={styles.modeChipText}>
+                    {system?.auto_mode_enabled ? "Auto Mode" : "Manual Mode"}
+                  </Text>
+                </View>
               </View>
 
               <View style={styles.buttonRow}>
@@ -403,7 +486,9 @@ export default function WaterDistributionScreen() {
                   ]}
                   onPress={handleStart}
                   activeOpacity={isRunning ? 1 : 0.8}
-                  disabled={isRunning || sending || !system}
+                  disabled={
+                    isRunning || sending || !system || !!system.auto_mode_enabled
+                  }
                 >
                   <FontAwesome
                     name="play"
@@ -431,7 +516,9 @@ export default function WaterDistributionScreen() {
                   ]}
                   onPress={handleStop}
                   activeOpacity={!isRunning ? 1 : 0.8}
-                  disabled={!isRunning || sending || !system}
+                  disabled={
+                    !isRunning || sending || !system || !!system.auto_mode_enabled
+                  }
                 >
                   <FontAwesome
                     name="stop"
@@ -671,6 +758,26 @@ const styles = StyleSheet.create({
   statusLabel: {
     fontFamily: fonts.medium,
     fontSize: fontScale(13),
+    color: colors.dark,
+  },
+  modeChip: {
+    marginLeft: "auto",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+  },
+  modeChipAuto: {
+    backgroundColor: "#ECFEFF",
+    borderColor: "#67E8F9",
+  },
+  modeChipManual: {
+    backgroundColor: "#F3F4F6",
+    borderColor: colors.grayBorder,
+  },
+  modeChipText: {
+    fontFamily: fonts.semibold,
+    fontSize: fontScale(11),
     color: colors.dark,
   },
   buttonRow: {

@@ -29,21 +29,32 @@ import Svg, {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { isAdminRole } from "@/lib/isAdminRole";
-import { clearAllStorage } from "@/lib/storage";
+import { clearAllStorage, getLoggedInEmail } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 import { getWeatherData } from "../../lib/weatherConfig";
 
 // ── Config ─────────────────────────────────────────────────────────────────
 const DEFAULT_COORDS = { latitude: 15.53, longitude: 120.6042 };
 
-/** Local UI preference only; does not command hardware or sync to the server. */
 const AUTO_IRRIGATION_MODE_KEY = "dashboard_auto_irrigation_mode";
+const AUTO_MODE_COLUMN = "auto_mode_enabled";
+const DEFAULT_IRRIGATION_BRIDGE_URL =
+  "https://arduino-bridge.commanderzale08.workers.dev";
+
+const isMissingAutoModeColumnError = (error: unknown): boolean => {
+  const message =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : "";
+  return message.toLowerCase().includes(AUTO_MODE_COLUMN);
+};
 
 type IrrigationSystemRow = {
   id: number;
   farm_id: number;
   system_name: string;
   pump_status: boolean;
+  auto_mode_enabled?: boolean | null;
 };
 
 type UserProfileSource = {
@@ -533,6 +544,10 @@ export default function DashboardScreen() {
   const [nextScheduleTime, setNextScheduleTime] = useState<string>("");
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [autoIrrigationModeOn, setAutoIrrigationModeOn] = useState(false);
+  const [supportsAutoModeColumn, setSupportsAutoModeColumn] = useState(true);
+  const [profileSource, setProfileSource] = useState<UserProfileSource | null>(
+    null,
+  );
 
   const [autoIrrigationConfirmOpen, setAutoIrrigationConfirmOpen] =
     useState(false);
@@ -540,6 +555,101 @@ export default function DashboardScreen() {
   const [irrigationSystem, setIrrigationSystem] =
     useState<IrrigationSystemRow | null>(null);
   const drawerX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+
+  const syncIrrigationStateToBridge = useCallback(
+    async ({
+      systemId,
+      autoModeEnabled,
+      pumpStatus,
+    }: {
+      systemId: number;
+      autoModeEnabled: boolean;
+      pumpStatus: boolean;
+    }) => {
+      const configuredBridgeUrl =
+        process.env.EXPO_PUBLIC_ARDUINO_BRIDGE_URL?.trim() || "";
+      const candidateBaseUrls = [
+        configuredBridgeUrl,
+        DEFAULT_IRRIGATION_BRIDGE_URL,
+      ].filter((url, idx, arr): url is string => {
+        const normalized = url.trim();
+        if (!normalized) return false;
+        return arr.findIndex((item) => item.trim() === normalized) === idx;
+      });
+
+      const payload = {
+        system_id: systemId,
+        auto_mode_enabled: autoModeEnabled,
+        pump_status: pumpStatus,
+      };
+      let lastFailure:
+        | {
+            endpoint: string;
+            status?: number;
+            responseText?: string;
+            bridgeError?: unknown;
+          }
+        | undefined;
+
+      for (const baseUrl of candidateBaseUrls) {
+        const endpoint = `${baseUrl.replace(/\/$/, "")}/api/irrigation-state`;
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const responseText = await response.text().catch(() => "");
+          if (!response.ok) {
+            lastFailure = {
+              endpoint,
+              status: response.status,
+              responseText,
+            };
+            continue;
+          }
+
+          let parsed: {
+            auto_mode_enabled?: unknown;
+            pump_status?: unknown;
+          } | null = null;
+          try {
+            parsed = responseText ? JSON.parse(responseText) : null;
+          } catch {
+            parsed = null;
+          }
+
+          const hasExpectedShape =
+            !!parsed &&
+            typeof parsed.auto_mode_enabled === "boolean" &&
+            typeof parsed.pump_status === "boolean";
+          if (hasExpectedShape) {
+            return true;
+          }
+
+          // Some deployments may return {"ok":true} or plain text ("OK") but not state.
+          // Treat those as unsuccessful so we can try the next candidate host.
+          lastFailure = {
+            endpoint,
+            status: response.status,
+            responseText,
+          };
+        } catch (bridgeError) {
+          lastFailure = {
+            endpoint,
+            bridgeError,
+          };
+        }
+      }
+
+      console.warn("[AutoToggle] Bridge sync failed for all endpoints", {
+        candidates: candidateBaseUrls,
+        ...lastFailure,
+      });
+      return false;
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -599,7 +709,276 @@ export default function DashboardScreen() {
   const applyAutoIrrigationMode = useCallback(
     async (on: boolean) => {
       try {
-        if (!userId || !irrigationSystem?.id) {
+        let effectiveUserId = userId ?? null;
+        let effectiveProfileSource = profileSource;
+        console.log("[AutoToggle] Requested", {
+          on,
+          userId: effectiveUserId,
+          currentSystemId: irrigationSystem?.id ?? null,
+          currentPumpStatus: irrigationSystem?.pump_status ?? null,
+          currentAutoMode: irrigationSystem?.auto_mode_enabled ?? null,
+        });
+
+        if (!effectiveUserId || !effectiveProfileSource) {
+          console.log(
+            "[AutoToggle] Missing profile context, attempting email/profile fallback",
+          );
+          const fallbackEmail = email || (await getLoggedInEmail()) || "";
+          if (fallbackEmail) {
+            const { data: profileData, error: profileError } = await supabase
+              .from("user_profiles")
+              .select("id, email")
+              .eq("email", fallbackEmail)
+              .maybeSingle();
+            if (profileError) {
+              console.error(
+                "[AutoToggle] profile fallback lookup failed",
+                profileError,
+              );
+            } else if (profileData) {
+              effectiveUserId = String(profileData.id);
+              effectiveProfileSource = profileData as UserProfileSource;
+              setUserId(String(profileData.id));
+              setProfileSource(profileData as UserProfileSource);
+              console.log("[AutoToggle] profile fallback resolved", {
+                fallbackEmail,
+                effectiveUserId,
+              });
+            }
+          } else {
+            console.warn("[AutoToggle] No fallback email found");
+          }
+        }
+
+        if (!effectiveUserId) {
+          console.warn(
+            "[AutoToggle] userId missing, continuing with nullable log user",
+          );
+        }
+
+        let targetSystem = irrigationSystem;
+        if (!targetSystem?.id && effectiveProfileSource) {
+          console.log("[AutoToggle] Resolving system from profile", {
+            profileSource: effectiveProfileSource,
+          });
+          const ownerCandidates = toOwnerIdCandidates(effectiveProfileSource);
+          for (const ownerCandidate of ownerCandidates) {
+            console.log("[AutoToggle] Trying owner candidate", {
+              ownerCandidate,
+            });
+            const { data: farmData } = await supabase
+              .from("farm")
+              .select("id")
+              .eq("owner_id", ownerCandidate)
+              .maybeSingle();
+            if (!farmData?.id) continue;
+            console.log("[AutoToggle] Farm found", { farmId: farmData.id });
+
+            const { data: resolvedSystem } = await supabase
+              .from("irrigation_system")
+              .select(
+                "id, farm_id, system_name, pump_status, auto_mode_enabled",
+              )
+              .eq("farm_id", farmData.id)
+              .eq("system_name", "Main Irrigation System")
+              .maybeSingle();
+            if (resolvedSystem?.id) {
+              targetSystem = resolvedSystem as IrrigationSystemRow;
+              setIrrigationSystem(targetSystem);
+              console.log("[AutoToggle] Resolved target system", {
+                systemId: targetSystem.id,
+                pump_status: targetSystem.pump_status,
+                auto_mode_enabled: targetSystem.auto_mode_enabled ?? null,
+              });
+              break;
+            }
+            const { data: resolvedFallbackSystem } = await supabase
+              .from("irrigation_system")
+              .select(
+                "id, farm_id, system_name, pump_status, auto_mode_enabled",
+              )
+              .eq("farm_id", farmData.id)
+              .order("id", { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            if (resolvedFallbackSystem?.id) {
+              targetSystem = resolvedFallbackSystem as IrrigationSystemRow;
+              setIrrigationSystem(targetSystem);
+              console.log("[AutoToggle] Resolved fallback target system", {
+                systemId: targetSystem.id,
+                pump_status: targetSystem.pump_status,
+                auto_mode_enabled: targetSystem.auto_mode_enabled ?? null,
+              });
+              break;
+            }
+
+            const { data: createdSystem, error: createSystemError } =
+              await supabase
+                .from("irrigation_system")
+                .insert({
+                  farm_id: farmData.id,
+                  system_name: "Main Irrigation System",
+                  hardware_model: null,
+                  water_source_details: null,
+                  pump_status: false,
+                  auto_mode_enabled: false,
+                })
+                .select(
+                  "id, farm_id, system_name, pump_status, auto_mode_enabled",
+                )
+                .single();
+
+            if (!createSystemError && createdSystem?.id) {
+              targetSystem = createdSystem as IrrigationSystemRow;
+              setIrrigationSystem(targetSystem);
+              console.log("[AutoToggle] Created target system", {
+                systemId: targetSystem.id,
+                farmId: farmData.id,
+              });
+              break;
+            }
+
+            if (
+              createSystemError &&
+              isMissingAutoModeColumnError(createSystemError)
+            ) {
+              const { data: createdNoAutoSystem, error: createdNoAutoError } =
+                await supabase
+                  .from("irrigation_system")
+                  .insert({
+                    farm_id: farmData.id,
+                    system_name: "Main Irrigation System",
+                    hardware_model: null,
+                    water_source_details: null,
+                    pump_status: false,
+                  })
+                  .select("id, farm_id, system_name, pump_status")
+                  .single();
+              if (!createdNoAutoError && createdNoAutoSystem?.id) {
+                targetSystem = createdNoAutoSystem as IrrigationSystemRow;
+                setIrrigationSystem(targetSystem);
+                setSupportsAutoModeColumn(false);
+                console.log(
+                  "[AutoToggle] Created target system (no auto column)",
+                  {
+                    systemId: targetSystem.id,
+                    farmId: farmData.id,
+                  },
+                );
+                break;
+              }
+            }
+          }
+        }
+        if (!targetSystem?.id && effectiveUserId) {
+          console.log(
+            "[AutoToggle] Attempting resolution from userId fallback",
+            {
+              userId: effectiveUserId,
+            },
+          );
+          const ownerCandidates = [effectiveUserId];
+          for (const ownerCandidate of ownerCandidates) {
+            const { data: farmData } = await supabase
+              .from("farm")
+              .select("id")
+              .eq("owner_id", ownerCandidate)
+              .maybeSingle();
+            if (!farmData?.id) continue;
+            const { data: resolvedSystem } = await supabase
+              .from("irrigation_system")
+              .select(
+                "id, farm_id, system_name, pump_status, auto_mode_enabled",
+              )
+              .eq("farm_id", farmData.id)
+              .eq("system_name", "Main Irrigation System")
+              .maybeSingle();
+            if (resolvedSystem?.id) {
+              targetSystem = resolvedSystem as IrrigationSystemRow;
+              setIrrigationSystem(targetSystem);
+              console.log("[AutoToggle] Resolved system from userId fallback", {
+                systemId: targetSystem.id,
+              });
+              break;
+            }
+            const { data: resolvedFallbackSystem } = await supabase
+              .from("irrigation_system")
+              .select(
+                "id, farm_id, system_name, pump_status, auto_mode_enabled",
+              )
+              .eq("farm_id", farmData.id)
+              .order("id", { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            if (resolvedFallbackSystem?.id) {
+              targetSystem = resolvedFallbackSystem as IrrigationSystemRow;
+              setIrrigationSystem(targetSystem);
+              console.log("[AutoToggle] Resolved fallback system from userId", {
+                systemId: targetSystem.id,
+              });
+              break;
+            }
+
+            const { data: createdSystem, error: createSystemError } =
+              await supabase
+                .from("irrigation_system")
+                .insert({
+                  farm_id: farmData.id,
+                  system_name: "Main Irrigation System",
+                  hardware_model: null,
+                  water_source_details: null,
+                  pump_status: false,
+                  auto_mode_enabled: false,
+                })
+                .select(
+                  "id, farm_id, system_name, pump_status, auto_mode_enabled",
+                )
+                .single();
+
+            if (!createSystemError && createdSystem?.id) {
+              targetSystem = createdSystem as IrrigationSystemRow;
+              setIrrigationSystem(targetSystem);
+              console.log("[AutoToggle] Created system from userId fallback", {
+                systemId: targetSystem.id,
+                farmId: farmData.id,
+              });
+              break;
+            }
+
+            if (
+              createSystemError &&
+              isMissingAutoModeColumnError(createSystemError)
+            ) {
+              const { data: createdNoAutoSystem, error: createdNoAutoError } =
+                await supabase
+                  .from("irrigation_system")
+                  .insert({
+                    farm_id: farmData.id,
+                    system_name: "Main Irrigation System",
+                    hardware_model: null,
+                    water_source_details: null,
+                    pump_status: false,
+                  })
+                  .select("id, farm_id, system_name, pump_status")
+                  .single();
+              if (!createdNoAutoError && createdNoAutoSystem?.id) {
+                targetSystem = createdNoAutoSystem as IrrigationSystemRow;
+                setIrrigationSystem(targetSystem);
+                setSupportsAutoModeColumn(false);
+                console.log(
+                  "[AutoToggle] Created system from userId fallback (no auto column)",
+                  {
+                    systemId: targetSystem.id,
+                    farmId: farmData.id,
+                  },
+                );
+                break;
+              }
+            }
+          }
+        }
+        if (!targetSystem?.id) {
+          console.warn("[AutoToggle] Abort: no target system");
           Alert.alert(
             "System Not Ready",
             "No irrigation system is linked yet for this farm. Please set up your farm and irrigation system first before using automatic irrigation.",
@@ -607,23 +986,55 @@ export default function DashboardScreen() {
           return;
         }
 
-        const scheduleId = await getActiveScheduleId(userId);
-        const shouldStopPump = !on && irrigationSystem.pump_status;
+        const scheduleId = effectiveUserId
+          ? await getActiveScheduleId(effectiveUserId)
+          : null;
+        const shouldStopPump = !on && targetSystem.pump_status;
+        // Auto mode should own pump decisions from soil thresholds, so clear
+        // manual pump command when auto is enabled.
+        const nextPumpStatus = on
+          ? false
+          : shouldStopPump
+            ? false
+            : targetSystem.pump_status;
+        console.log("[AutoToggle] Applying DB update", {
+          systemId: targetSystem.id,
+          scheduleId,
+          shouldStopPump,
+          nextPumpStatus,
+          nextAutoMode: on,
+        });
 
         const { error: systemError } = await supabase
           .from("irrigation_system")
           .update({
-            pump_status: shouldStopPump ? false : irrigationSystem.pump_status,
+            pump_status: nextPumpStatus,
+            auto_mode_enabled: on,
           })
-          .eq("id", irrigationSystem.id);
-        if (systemError) throw systemError;
+          .eq("id", targetSystem.id);
+        if (systemError) {
+          console.error(
+            "[AutoToggle] irrigation_system update failed",
+            systemError,
+          );
+          if (isMissingAutoModeColumnError(systemError)) {
+            setSupportsAutoModeColumn(false);
+            Alert.alert(
+              "Database Update Needed",
+              "Please add irrigation_system.auto_mode_enabled in Supabase before using the automatic irrigation switch.",
+            );
+            return;
+          }
+          throw systemError;
+        }
+        console.log("[AutoToggle] irrigation_system update success");
 
         const nowIso = new Date().toISOString();
         const { error: logError } = await supabase
           .from("irrigation_log")
           .insert({
-            system_id: irrigationSystem.id,
-            triggered_by_user_id: userId,
+            system_id: targetSystem.id,
+            triggered_by_user_id: effectiveUserId,
             trigger_type: "Automated",
             status: shouldStopPump ? "completed" : "idle",
             command: on ? "auto_mode_on" : "auto_mode_off",
@@ -632,13 +1043,24 @@ export default function DashboardScreen() {
             duration_seconds: shouldStopPump ? 0 : null,
             schedule_id: scheduleId,
           });
-        if (logError) throw logError;
+        if (logError) {
+          console.error("[AutoToggle] irrigation_log insert failed", logError);
+          throw logError;
+        }
+        console.log("[AutoToggle] irrigation_log insert success");
+
+        const bridgeSynced = await syncIrrigationStateToBridge({
+          systemId: targetSystem.id,
+          autoModeEnabled: on,
+          pumpStatus: nextPumpStatus,
+        });
 
         setIrrigationSystem((prev) =>
           prev
             ? {
                 ...prev,
-                pump_status: shouldStopPump ? false : prev.pump_status,
+                pump_status: nextPumpStatus,
+                auto_mode_enabled: on,
               }
             : prev,
         );
@@ -647,6 +1069,17 @@ export default function DashboardScreen() {
         void Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Success,
         );
+        console.log("[AutoToggle] Completed", {
+          systemId: targetSystem.id,
+          on,
+          bridgeSynced,
+        });
+        if (!bridgeSynced) {
+          Alert.alert(
+            "Saved, But Bridge Is Offline",
+            "Automatic mode was saved to the database, but the hardware bridge did not confirm the update. Please check your bridge deployment endpoint.",
+          );
+        }
       } catch (error) {
         console.error("Failed to set automatic irrigation mode:", error);
         Alert.alert(
@@ -657,7 +1090,13 @@ export default function DashboardScreen() {
         setAutoIrrigationConfirmOpen(false);
       }
     },
-    [getActiveScheduleId, irrigationSystem, userId],
+    [
+      getActiveScheduleId,
+      irrigationSystem,
+      profileSource,
+      syncIrrigationStateToBridge,
+      userId,
+    ],
   );
 
   const timeToMinutes = (timeStr: string): number => {
@@ -759,7 +1198,7 @@ export default function DashboardScreen() {
   }, []);
 
   const ensureIrrigationSystem = useCallback(
-    async (profile: UserProfileSource) => {
+    async (profile: UserProfileSource): Promise<IrrigationSystemRow | null> => {
       const ownerCandidates = toOwnerIdCandidates(profile);
       let farm: { id: number | string } | null = null;
       let lastFarmError: { code?: string; message?: string } | null = null;
@@ -776,7 +1215,7 @@ export default function DashboardScreen() {
             lastFarmError = farmError;
             continue;
           }
-          return;
+          return null;
         }
 
         if (farmData?.id) {
@@ -791,20 +1230,56 @@ export default function DashboardScreen() {
             "Failed to load farm: owner_id expects bigint but profile identifiers are non-numeric.",
           );
         }
-        return;
+        return null;
       }
 
       const { data: existing, error: existingError } = await supabase
         .from("irrigation_system")
-        .select("id, farm_id, system_name, pump_status")
+        .select("id, farm_id, system_name, pump_status, auto_mode_enabled")
         .eq("farm_id", farm.id)
         .eq("system_name", "Main Irrigation System")
         .maybeSingle();
-      if (existingError) return;
+      if (existingError && !isMissingAutoModeColumnError(existingError)) {
+        return null;
+      }
+
+      if (existingError && isMissingAutoModeColumnError(existingError)) {
+        setSupportsAutoModeColumn(false);
+        const { data: existingNoAuto, error: existingNoAutoError } =
+          await supabase
+            .from("irrigation_system")
+            .select("id, farm_id, system_name, pump_status")
+            .eq("farm_id", farm.id)
+            .eq("system_name", "Main Irrigation System")
+            .maybeSingle();
+        if (existingNoAutoError) return null;
+        if (existingNoAuto) {
+          setIrrigationSystem(existingNoAuto as IrrigationSystemRow);
+          setAutoIrrigationModeOn(false);
+          return existingNoAuto as IrrigationSystemRow;
+        }
+      }
 
       if (existing) {
+        setSupportsAutoModeColumn(true);
         setIrrigationSystem(existing as IrrigationSystemRow);
-        return;
+        setAutoIrrigationModeOn(Boolean(existing.auto_mode_enabled));
+        return existing as IrrigationSystemRow;
+      }
+
+      const { data: existingFallback, error: existingFallbackError } =
+        await supabase
+          .from("irrigation_system")
+          .select("id, farm_id, system_name, pump_status, auto_mode_enabled")
+          .eq("farm_id", farm.id)
+          .order("id", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+      if (!existingFallbackError && existingFallback) {
+        setSupportsAutoModeColumn(true);
+        setIrrigationSystem(existingFallback as IrrigationSystemRow);
+        setAutoIrrigationModeOn(Boolean(existingFallback.auto_mode_enabled));
+        return existingFallback as IrrigationSystemRow;
       }
 
       const { data: created, error: createError } = await supabase
@@ -815,12 +1290,38 @@ export default function DashboardScreen() {
           hardware_model: null,
           water_source_details: null,
           pump_status: false,
+          auto_mode_enabled: false,
         })
-        .select("id, farm_id, system_name, pump_status")
+        .select("id, farm_id, system_name, pump_status, auto_mode_enabled")
         .single();
-      if (!createError && created) {
-        setIrrigationSystem(created as IrrigationSystemRow);
+      if (createError && isMissingAutoModeColumnError(createError)) {
+        setSupportsAutoModeColumn(false);
+        const { data: createdNoAuto, error: createdNoAutoError } =
+          await supabase
+            .from("irrigation_system")
+            .insert({
+              farm_id: farm.id,
+              system_name: "Main Irrigation System",
+              hardware_model: null,
+              water_source_details: null,
+              pump_status: false,
+            })
+            .select("id, farm_id, system_name, pump_status")
+            .single();
+        if (!createdNoAutoError && createdNoAuto) {
+          setIrrigationSystem(createdNoAuto as IrrigationSystemRow);
+          setAutoIrrigationModeOn(false);
+          return createdNoAuto as IrrigationSystemRow;
+        }
+        return null;
       }
+      if (!createError && created) {
+        setSupportsAutoModeColumn(true);
+        setIrrigationSystem(created as IrrigationSystemRow);
+        setAutoIrrigationModeOn(Boolean(created.auto_mode_enabled));
+        return created as IrrigationSystemRow;
+      }
+      return null;
     },
     [],
   );
@@ -838,16 +1339,23 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     const fetchProfile = async () => {
-      if (!email) {
-        setLoadingName(false);
-        setScheduleLoading(false);
-        return;
-      }
       try {
+        let lookupEmail = email;
+        if (!lookupEmail) {
+          const fallbackEmail = (await getLoggedInEmail()) ?? "";
+          if (!fallbackEmail) {
+            setLoadingName(false);
+            setScheduleLoading(false);
+            return;
+          }
+          lookupEmail = fallbackEmail;
+          console.log("[Dashboard] Using auth email fallback", { lookupEmail });
+        }
+
         const { data, error } = await supabase
           .from("user_profiles")
-          .select("id, user_id, owner_id, name, profile_picture, role")
-          .eq("email", email)
+          .select("id, name, profile_picture, role")
+          .eq("email", lookupEmail)
           .maybeSingle();
         if (!error && data) {
           if (isAdminRole(data.role)) {
@@ -861,9 +1369,14 @@ export default function DashboardScreen() {
           setFullName(data.name || "Farmer");
           setProfilePicture(data.profile_picture);
           setUserId(data.id);
+          setProfileSource(data as UserProfileSource);
           fetchNextSchedule(data.id);
-          ensureIrrigationSystem(data as UserProfileSource);
+          void ensureIrrigationSystem(data as UserProfileSource);
         } else {
+          console.warn("[Dashboard] Profile lookup failed", {
+            lookupEmail,
+            error,
+          });
           setScheduleLoading(false);
         }
       } catch (error) {
@@ -895,9 +1408,20 @@ export default function DashboardScreen() {
               ? {
                   ...prev,
                   pump_status: Boolean(next.pump_status),
+                  auto_mode_enabled:
+                    typeof next.auto_mode_enabled === "boolean"
+                      ? next.auto_mode_enabled
+                      : prev.auto_mode_enabled,
                 }
               : prev,
           );
+          if (typeof next.auto_mode_enabled === "boolean") {
+            setAutoIrrigationModeOn(next.auto_mode_enabled);
+            void AsyncStorage.setItem(
+              AUTO_IRRIGATION_MODE_KEY,
+              next.auto_mode_enabled ? "1" : "0",
+            ).catch(() => {});
+          }
         },
       )
       .on(
@@ -1405,7 +1929,11 @@ export default function DashboardScreen() {
                     color="#fff"
                   />
                   <Text style={styles.heroAutoBadgeText}>
-                    {autoIrrigationModeOn ? "On" : "Off"}
+                    {supportsAutoModeColumn
+                      ? autoIrrigationModeOn
+                        ? "On"
+                        : "Off"
+                      : "Setup"}
                   </Text>
                 </Pressable>
               </View>
@@ -1757,8 +2285,8 @@ export default function DashboardScreen() {
               </Text>
               <Text style={styles.popupMessage}>
                 {autoIrrigationPendingOn
-                  ? "When automatic irrigation is on, the system can follow your schedules and sensor-based rules whenever your field equipment is linked. You remain in control and can switch this off at any time."
-                  : "Turning this off stops automatic irrigation from running through this app until you turn it on again. Scheduled times and sensor readings on the dashboard are not removed."}
+                  ? "When automatic irrigation is on, your hardware controls the pump using soil moisture thresholds (dry/wet). Manual pump commands are paused until you switch this off."
+                  : "Turning this off stops threshold-based automatic pumping. You can then control the pump manually from your app controls."}
               </Text>
               <View style={styles.autoIrrigationModalActions}>
                 <TouchableOpacity
