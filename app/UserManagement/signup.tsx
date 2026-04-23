@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
 import * as Device from "expo-device";
 import { Link, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -45,6 +45,9 @@ const generateUUID = () => {
   });
 };
 
+/** Philippine mobile: exactly 11 digits, starts with 09 (e.g. 09123456789). */
+const PHONE_11_REGEX = /^09\d{9}$/;
+
 export default function SignupScreen() {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -74,23 +77,47 @@ export default function SignupScreen() {
     (req) => req === true,
   );
 
-  // Check if form is ready for submission
-  const isFormValid =
-    name &&
-    email &&
-    phone &&
-    password &&
-    confirmPassword &&
-    password === confirmPassword &&
-    allPasswordRequirementsMet;
-
   const [emailExists, setEmailExists] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
+  const [phoneExists, setPhoneExists] = useState(false);
+  const [checkingPhone, setCheckingPhone] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const emailCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const phoneCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const canSubmit = useMemo(() => {
+    const phoneOk = PHONE_11_REGEX.test(phone);
+    return Boolean(
+      name?.trim() &&
+        email?.trim() &&
+        phoneOk &&
+        password &&
+        confirmPassword &&
+        password === confirmPassword &&
+        allPasswordRequirementsMet &&
+        !emailExists &&
+        !phoneExists &&
+        !checkingEmail &&
+        !checkingPhone,
+    );
+  }, [
+    name,
+    email,
+    phone,
+    password,
+    confirmPassword,
+    allPasswordRequirementsMet,
+    emailExists,
+    phoneExists,
+    checkingEmail,
+    checkingPhone,
+  ]);
 
   const validateName = (nameText: string): boolean => {
     if (!nameText.trim()) {
@@ -150,6 +177,48 @@ export default function SignupScreen() {
     }
   };
 
+  const checkPhoneExists = async (phoneToCheck: string) => {
+    if (!PHONE_11_REGEX.test(phoneToCheck)) {
+      setPhoneExists(false);
+      return;
+    }
+
+    setCheckingPhone(true);
+    try {
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .select("phone_number")
+        .eq("phone_number", phoneToCheck)
+        .maybeSingle();
+
+      setPhoneExists(!error && !!data);
+    } catch (error) {
+      console.error("Error checking phone:", error);
+      setPhoneExists(false);
+    } finally {
+      setCheckingPhone(false);
+    }
+  };
+
+  const validatePhone = (phoneText: string): boolean => {
+    if (!phoneText.trim()) {
+      setPhoneError(null);
+      return true;
+    }
+    if (phoneText.length < 11) {
+      setPhoneError(null);
+      return true;
+    }
+    if (!PHONE_11_REGEX.test(phoneText)) {
+      setPhoneError(
+        "Use 11 digits starting with 09 (example: 09123456789).",
+      );
+      return false;
+    }
+    setPhoneError(null);
+    return true;
+  };
+
   const handleNameChange = (text: string) => {
     setName(text);
     validateName(text);
@@ -173,11 +242,33 @@ export default function SignupScreen() {
     }
   };
 
+  const handlePhoneChange = (text: string) => {
+    const numericText = text.replace(/[^0-9]/g, "").slice(0, 11);
+    setPhone(numericText);
+    setPhoneExists(false);
+    validatePhone(numericText);
+
+    if (phoneCheckTimeoutRef.current) {
+      clearTimeout(phoneCheckTimeoutRef.current);
+    }
+
+    if (PHONE_11_REGEX.test(numericText)) {
+      phoneCheckTimeoutRef.current = setTimeout(() => {
+        void checkPhoneExists(numericText);
+      }, 500);
+    } else {
+      setPhoneExists(false);
+    }
+  };
+
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
       if (emailCheckTimeoutRef.current) {
         clearTimeout(emailCheckTimeoutRef.current);
+      }
+      if (phoneCheckTimeoutRef.current) {
+        clearTimeout(phoneCheckTimeoutRef.current);
       }
     };
   }, []);
@@ -210,6 +301,39 @@ export default function SignupScreen() {
       hasErrors = true;
     }
 
+    if (!phone.trim()) {
+      setPhoneError("Phone number is required");
+      hasErrors = true;
+    } else if (!PHONE_11_REGEX.test(phone)) {
+      setPhoneError(
+        "Phone must be exactly 11 digits starting with 09 (example: 09123456789).",
+      );
+      hasErrors = true;
+    }
+
+    if (phoneExists) {
+      setPhoneError(
+        "This phone number is already registered. Please use a different number.",
+      );
+      hasErrors = true;
+    }
+
+    // Re-check phone uniqueness on submit to avoid race with debounced check
+    if (!hasErrors && PHONE_11_REGEX.test(phone)) {
+      const { data: phoneRow, error: phoneLookupError } = await supabase
+        .from("user_profiles")
+        .select("phone_number")
+        .eq("phone_number", phone)
+        .maybeSingle();
+      if (!phoneLookupError && phoneRow) {
+        setPhoneExists(true);
+        setPhoneError(
+          "This phone number is already registered. Please use a different number.",
+        );
+        hasErrors = true;
+      }
+    }
+
     // Check if all password requirements are met
     const requirements = getPasswordRequirements(password);
     const allRequirementsMet = Object.values(requirements).every(
@@ -236,7 +360,7 @@ export default function SignupScreen() {
       return;
     }
 
-    if (!phone || !password || !confirmPassword) {
+    if (!password || !confirmPassword) {
       Alert.alert(
         "Required Fields Missing",
         "Please fill in all required fields before continuing.",
@@ -391,20 +515,43 @@ export default function SignupScreen() {
                       style={styles.inputIcon}
                     />
                     <TextInput
-                      placeholder="Phone number"
+                      placeholder="09123456789"
                       placeholderTextColor={colors.brandGrayText}
                       keyboardType="phone-pad"
                       value={phone}
-                      onChangeText={(text) => {
-                        // Only allow numbers and limit to 11 digits
-                        const numericText = text.replace(/[^0-9]/g, "");
-                        setPhone(numericText.slice(0, 11));
-                      }}
+                      onChangeText={handlePhoneChange}
                       editable={!loading}
                       style={styles.input}
                       maxLength={11}
                     />
+                    {checkingPhone && (
+                      <ActivityIndicator
+                        size="small"
+                        color={colors.brandGrayText}
+                        style={styles.togglePasswordButton}
+                      />
+                    )}
+                    {!checkingPhone &&
+                      phone.length === 11 &&
+                      PHONE_11_REGEX.test(phone) &&
+                      !phoneError && (
+                        <FontAwesome
+                          name={phoneExists ? "times-circle" : "check-circle"}
+                          size={18}
+                          color={phoneExists ? "#EF4444" : colors.brandGreen}
+                          style={styles.togglePasswordButton}
+                        />
+                      )}
                   </View>
+                  {phoneError && (
+                    <Text style={styles.fieldErrorText}>{phoneError}</Text>
+                  )}
+                  {!phoneError && phoneExists && (
+                    <Text style={styles.fieldErrorText}>
+                      This phone number is already registered. Please use a
+                      different number.
+                    </Text>
+                  )}
 
                   <View style={styles.inputWrapper}>
                     <FontAwesome
@@ -574,11 +721,11 @@ export default function SignupScreen() {
                   <TouchableOpacity
                     style={[
                       styles.signupButton,
-                      (loading || !isFormValid) && styles.signupButtonDisabled,
+                      (loading || !canSubmit) && styles.signupButtonDisabled,
                     ]}
                     activeOpacity={0.9}
                     onPress={handleSignup}
-                    disabled={loading || !isFormValid}
+                    disabled={loading || !canSubmit}
                   >
                     {loading ? (
                       <ActivityIndicator color="#fff" />
