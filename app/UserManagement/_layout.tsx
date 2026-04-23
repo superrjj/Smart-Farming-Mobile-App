@@ -49,6 +49,7 @@ export default function UserManagementLayout() {
   const [popup, setPopup] = useState<RecoPopup>(null);
   const [networkError, setNetworkError] = useState<NetworkErrorPopup>(null);
   const [adminDeniedVisible, setAdminDeniedVisible] = useState(false);
+  const adminRoleGuardCooldownRef = useRef(0);
   const appStateRef = useRef(AppState.currentState);
   const scheduleIdsRef = useRef<string[]>([]);
   const showNetworkError = (message: string) => {
@@ -197,16 +198,15 @@ export default function UserManagementLayout() {
         async (payload) => {
           const row = payload.new as { role?: unknown };
           if (!isAdminRole(row.role)) return;
+          const now = Date.now();
+          if (now - adminRoleGuardCooldownRef.current < 3000) return;
+          adminRoleGuardCooldownRef.current = now;
           try {
             await clearAllStorage();
           } catch {
             // ignore storage failures; still redirect
           }
           setAdminDeniedVisible(true);
-          router.replace({
-            pathname: "/UserManagement/login",
-            params: { blocked: "admin" },
-          });
         },
       )
       .subscribe();
@@ -215,6 +215,18 @@ export default function UserManagementLayout() {
       void supabase.removeChannel(channel);
     };
   }, [router, userId]);
+
+  useEffect(() => {
+    if (!adminDeniedVisible) return;
+    const timer = setTimeout(() => {
+      setAdminDeniedVisible(false);
+      router.replace({
+        pathname: "/UserManagement/login",
+        params: { blocked: "admin" },
+      });
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [adminDeniedVisible, router]);
 
   useEffect(() => {
     if (!userId) return;

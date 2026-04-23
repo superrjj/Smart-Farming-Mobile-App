@@ -46,6 +46,31 @@ type IrrigationSystemRow = {
   pump_status: boolean;
 };
 
+type UserProfileSource = {
+  id?: string | number | null;
+  user_id?: string | number | null;
+  owner_id?: string | number | null;
+};
+
+const toOwnerIdCandidates = (
+  profile: UserProfileSource,
+): (string | number)[] => {
+  const raw = [profile.id, profile.user_id, profile.owner_id];
+  const unique = new Set<string | number>();
+  raw.forEach((value) => {
+    if (value == null) return;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      unique.add(value);
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) unique.add(trimmed);
+    }
+  });
+  return Array.from(unique);
+};
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function formatPHTime(isoString: string): string {
   return new Intl.DateTimeFormat("en-PH", {
@@ -508,7 +533,7 @@ export default function DashboardScreen() {
   const [nextScheduleTime, setNextScheduleTime] = useState<string>("");
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [autoIrrigationModeOn, setAutoIrrigationModeOn] = useState(false);
-  
+
   const [autoIrrigationConfirmOpen, setAutoIrrigationConfirmOpen] =
     useState(false);
   const [autoIrrigationPendingOn, setAutoIrrigationPendingOn] = useState(true);
@@ -566,7 +591,9 @@ export default function DashboardScreen() {
       .limit(1)
       .maybeSingle();
 
-    return row?.schedule_id ? String(row.schedule_id) : scheduleIds[0] ?? null;
+    return row?.schedule_id
+      ? String(row.schedule_id)
+      : (scheduleIds[0] ?? null);
   }, []);
 
   const applyAutoIrrigationMode = useCallback(
@@ -592,27 +619,34 @@ export default function DashboardScreen() {
         if (systemError) throw systemError;
 
         const nowIso = new Date().toISOString();
-        const { error: logError } = await supabase.from("irrigation_log").insert({
-          system_id: irrigationSystem.id,
-          triggered_by_user_id: userId,
-          trigger_type: "Automated",
-          status: shouldStopPump ? "completed" : "idle",
-          command: on ? "auto_mode_on" : "auto_mode_off",
-          start_time: nowIso,
-          end_time: shouldStopPump ? nowIso : null,
-          duration_seconds: shouldStopPump ? 0 : null,
-          schedule_id: scheduleId,
-        });
+        const { error: logError } = await supabase
+          .from("irrigation_log")
+          .insert({
+            system_id: irrigationSystem.id,
+            triggered_by_user_id: userId,
+            trigger_type: "Automated",
+            status: shouldStopPump ? "completed" : "idle",
+            command: on ? "auto_mode_on" : "auto_mode_off",
+            start_time: nowIso,
+            end_time: shouldStopPump ? nowIso : null,
+            duration_seconds: shouldStopPump ? 0 : null,
+            schedule_id: scheduleId,
+          });
         if (logError) throw logError;
 
         setIrrigationSystem((prev) =>
           prev
-            ? { ...prev, pump_status: shouldStopPump ? false : prev.pump_status }
+            ? {
+                ...prev,
+                pump_status: shouldStopPump ? false : prev.pump_status,
+              }
             : prev,
         );
         setAutoIrrigationModeOn(on);
         await AsyncStorage.setItem(AUTO_IRRIGATION_MODE_KEY, on ? "1" : "0");
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        void Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
       } catch (error) {
         console.error("Failed to set automatic irrigation mode:", error);
         Alert.alert(
@@ -724,42 +758,72 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  const ensureIrrigationSystem = useCallback(async (uid: string) => {
-    const { data: farm, error: farmError } = await supabase
-      .from("farm")
-      .select("id")
-      .eq("owner_id", uid)
-      .maybeSingle();
-    if (farmError || !farm?.id) return;
+  const ensureIrrigationSystem = useCallback(
+    async (profile: UserProfileSource) => {
+      const ownerCandidates = toOwnerIdCandidates(profile);
+      let farm: { id: number | string } | null = null;
+      let lastFarmError: { code?: string; message?: string } | null = null;
 
-    const { data: existing, error: existingError } = await supabase
-      .from("irrigation_system")
-      .select("id, farm_id, system_name, pump_status")
-      .eq("farm_id", farm.id)
-      .eq("system_name", "Main Irrigation System")
-      .maybeSingle();
-    if (existingError) return;
+      for (const ownerCandidate of ownerCandidates) {
+        const { data: farmData, error: farmError } = await supabase
+          .from("farm")
+          .select("id")
+          .eq("owner_id", ownerCandidate)
+          .maybeSingle();
 
-    if (existing) {
-      setIrrigationSystem(existing as IrrigationSystemRow);
-      return;
-    }
+        if (farmError) {
+          if (farmError.code === "22P02") {
+            lastFarmError = farmError;
+            continue;
+          }
+          return;
+        }
 
-    const { data: created, error: createError } = await supabase
-      .from("irrigation_system")
-      .insert({
-        farm_id: farm.id,
-        system_name: "Main Irrigation System",
-        hardware_model: null,
-        water_source_details: null,
-        pump_status: false,
-      })
-      .select("id, farm_id, system_name, pump_status")
-      .single();
-    if (!createError && created) {
-      setIrrigationSystem(created as IrrigationSystemRow);
-    }
-  }, []);
+        if (farmData?.id) {
+          farm = farmData;
+          break;
+        }
+      }
+
+      if (!farm?.id) {
+        if (lastFarmError?.code === "22P02") {
+          console.error(
+            "Failed to load farm: owner_id expects bigint but profile identifiers are non-numeric.",
+          );
+        }
+        return;
+      }
+
+      const { data: existing, error: existingError } = await supabase
+        .from("irrigation_system")
+        .select("id, farm_id, system_name, pump_status")
+        .eq("farm_id", farm.id)
+        .eq("system_name", "Main Irrigation System")
+        .maybeSingle();
+      if (existingError) return;
+
+      if (existing) {
+        setIrrigationSystem(existing as IrrigationSystemRow);
+        return;
+      }
+
+      const { data: created, error: createError } = await supabase
+        .from("irrigation_system")
+        .insert({
+          farm_id: farm.id,
+          system_name: "Main Irrigation System",
+          hardware_model: null,
+          water_source_details: null,
+          pump_status: false,
+        })
+        .select("id, farm_id, system_name, pump_status")
+        .single();
+      if (!createError && created) {
+        setIrrigationSystem(created as IrrigationSystemRow);
+      }
+    },
+    [],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -782,7 +846,7 @@ export default function DashboardScreen() {
       try {
         const { data, error } = await supabase
           .from("user_profiles")
-          .select("id, name, profile_picture, role")
+          .select("id, user_id, owner_id, name, profile_picture, role")
           .eq("email", email)
           .maybeSingle();
         if (!error && data) {
@@ -798,7 +862,7 @@ export default function DashboardScreen() {
           setProfilePicture(data.profile_picture);
           setUserId(data.id);
           fetchNextSchedule(data.id);
-          ensureIrrigationSystem(data.id);
+          ensureIrrigationSystem(data as UserProfileSource);
         } else {
           setScheduleLoading(false);
         }
@@ -852,10 +916,14 @@ export default function DashboardScreen() {
           const command = String(row.command ?? "").toLowerCase();
           if (command === "auto_mode_on") {
             setAutoIrrigationModeOn(true);
-            void AsyncStorage.setItem(AUTO_IRRIGATION_MODE_KEY, "1").catch(() => {});
+            void AsyncStorage.setItem(AUTO_IRRIGATION_MODE_KEY, "1").catch(
+              () => {},
+            );
           } else if (command === "auto_mode_off") {
             setAutoIrrigationModeOn(false);
-            void AsyncStorage.setItem(AUTO_IRRIGATION_MODE_KEY, "0").catch(() => {});
+            void AsyncStorage.setItem(AUTO_IRRIGATION_MODE_KEY, "0").catch(
+              () => {},
+            );
           }
         },
       )
@@ -1290,10 +1358,16 @@ export default function DashboardScreen() {
                       style={[styles.skeletonBlock, styles.heroEyebrowSkeleton]}
                     />
                     <View
-                      style={[styles.skeletonBlock, styles.heroGreetingSkeleton]}
+                      style={[
+                        styles.skeletonBlock,
+                        styles.heroGreetingSkeleton,
+                      ]}
                     />
                     <View
-                      style={[styles.skeletonBlock, styles.heroSubtitleSkeleton]}
+                      style={[
+                        styles.skeletonBlock,
+                        styles.heroSubtitleSkeleton,
+                      ]}
                     />
                   </>
                 ) : (
@@ -1341,8 +1415,12 @@ export default function DashboardScreen() {
             <View style={styles.heroChipsRow}>
               {sensorLoading || !irrigStatus ? (
                 <View style={[styles.heroChip, styles.heroChipSkeleton]}>
-                  <View style={[styles.skeletonBlock, styles.chipSkeletonIcon]} />
-                  <View style={[styles.skeletonBlock, styles.chipSkeletonText]} />
+                  <View
+                    style={[styles.skeletonBlock, styles.chipSkeletonIcon]}
+                  />
+                  <View
+                    style={[styles.skeletonBlock, styles.chipSkeletonText]}
+                  />
                 </View>
               ) : (
                 <View style={[styles.heroChip, irrigStatus.chipStyle]}>
@@ -1363,8 +1441,12 @@ export default function DashboardScreen() {
               )}
               {scheduleLoading ? (
                 <View style={[styles.heroChipNeutral, styles.heroChipSkeleton]}>
-                  <View style={[styles.skeletonBlock, styles.chipSkeletonIcon]} />
-                  <View style={[styles.skeletonBlock, styles.chipSkeletonText]} />
+                  <View
+                    style={[styles.skeletonBlock, styles.chipSkeletonIcon]}
+                  />
+                  <View
+                    style={[styles.skeletonBlock, styles.chipSkeletonText]}
+                  />
                 </View>
               ) : (
                 <View style={styles.heroChipNeutral}>
@@ -1979,11 +2061,11 @@ const styles = StyleSheet.create({
   heroSubtitle: {
     fontFamily: fonts.regular,
     fontSize: 13,
-    color: "#FFFFFF",                          
-    textShadowColor: "rgba(0,0,0,1)",        
+    color: "#FFFFFF",
+    textShadowColor: "rgba(0,0,0,1)",
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,                      
-},
+    textShadowRadius: 3,
+  },
   heroEyebrowSkeleton: {
     width: 96,
     height: 10,

@@ -1,10 +1,11 @@
 import { fontScale, scale } from "@/lib/responsive";
+import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  Alert,
   ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,7 +13,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { supabase } from "@/lib/supabase";
 
 const colors = {
   primary: "#0891B2",
@@ -57,7 +57,7 @@ type UserProfileRow = {
   owner_id?: string | number | null;
 };
 
-const toOwnerIdCandidates = (profile: UserProfileRow): Array<string | number> => {
+const toOwnerIdCandidates = (profile: UserProfileRow): (string | number)[] => {
   const raw = [profile.id, profile.user_id, profile.owner_id];
   const unique = new Set<string | number>();
 
@@ -133,12 +133,13 @@ export default function WaterDistributionScreen() {
           return;
         }
 
-        const { data: existingSystem, error: existingSystemError } = await supabase
-          .from("irrigation_system")
-          .select("id, farm_id, system_name, pump_status")
-          .eq("farm_id", farm.id)
-          .eq("system_name", "Main Irrigation System")
-          .maybeSingle();
+        const { data: existingSystem, error: existingSystemError } =
+          await supabase
+            .from("irrigation_system")
+            .select("id, farm_id, system_name, pump_status")
+            .eq("farm_id", farm.id)
+            .eq("system_name", "Main Irrigation System")
+            .maybeSingle();
         if (existingSystemError) throw existingSystemError;
 
         if (existingSystem) {
@@ -233,7 +234,9 @@ export default function WaterDistributionScreen() {
       .limit(1)
       .maybeSingle();
 
-    return dates?.schedule_id ? String(dates.schedule_id) : scheduleIds[0] ?? null;
+    return dates?.schedule_id
+      ? String(dates.schedule_id)
+      : (scheduleIds[0] ?? null);
   };
 
   const handleStart = async () => {
@@ -310,16 +313,18 @@ export default function WaterDistributionScreen() {
           .eq("id", latestRun.id);
         if (closeError) throw closeError;
       } else {
-        const { error: stopLogError } = await supabase.from("irrigation_log").insert({
-          system_id: system.id,
-          triggered_by_user_id: userId,
-          trigger_type: "Manual",
-          status: "completed",
-          command: "pump_off",
-          start_time: nowIso,
-          end_time: nowIso,
-          duration_seconds: 0,
-        });
+        const { error: stopLogError } = await supabase
+          .from("irrigation_log")
+          .insert({
+            system_id: system.id,
+            triggered_by_user_id: userId,
+            trigger_type: "Manual",
+            status: "completed",
+            command: "pump_off",
+            start_time: nowIso,
+            end_time: nowIso,
+            duration_seconds: 0,
+          });
         if (stopLogError) throw stopLogError;
       }
 
@@ -353,222 +358,236 @@ export default function WaterDistributionScreen() {
           </View>
         ) : (
           <>
-        {/* Top App Bar */}
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <FontAwesome name="chevron-left" size={18} color={colors.dark} />
-          </TouchableOpacity>
-
-          <View style={styles.titleRow}>
-            <Text style={styles.topBarTitle}>WATER DISTRIBUTION</Text>
-          </View>
-
-          <View style={styles.placeholder} />
-        </View>
-
-        {/* ── Start / Stop Controls ── */}
-        <View style={styles.controlsContainer}>
-          {/* Status indicator */}
-          <View style={styles.statusRow}>
-            <View
-              style={[
-                styles.statusPulse,
-                isRunning ? styles.pulseActive : styles.pulseIdle,
-              ]}
-            />
-            <Text style={styles.statusLabel}>
-              {isRunning ? "System Running" : "System Stopped"}
-            </Text>
-          </View>
-
-          <View style={styles.buttonRow}>
-            {/* Start Button */}
-            <TouchableOpacity
-              style={[
-                styles.controlButton,
-                styles.startButton,
-                isRunning && styles.startButtonDisabled,
-              ]}
-              onPress={handleStart}
-              activeOpacity={isRunning ? 1 : 0.8}
-              disabled={isRunning || sending || !system}
-            >
-              <FontAwesome
-                name="play"
-                size={14}
-                color={isRunning ? colors.grayText : "#fff"}
-              />
-              <Text
-                style={[
-                  styles.controlButtonText,
-                  isRunning
-                    ? styles.controlButtonTextDisabled
-                    : styles.startButtonText,
-                ]}
+            {/* Top App Bar */}
+            <View style={styles.topBar}>
+              <TouchableOpacity
+                onPress={() => router.back()}
+                style={styles.backButton}
               >
-                Start
-              </Text>
-            </TouchableOpacity>
+                <FontAwesome
+                  name="chevron-left"
+                  size={18}
+                  color={colors.dark}
+                />
+              </TouchableOpacity>
 
-            {/* Stop Button */}
-            <TouchableOpacity
-              style={[
-                styles.controlButton,
-                styles.stopButton,
-                !isRunning && styles.stopButtonDisabled,
-              ]}
-              onPress={handleStop}
-              activeOpacity={!isRunning ? 1 : 0.8}
-              disabled={!isRunning || sending || !system}
-            >
-              <FontAwesome
-                name="stop"
-                size={14}
-                color={!isRunning ? colors.grayText : colors.danger}
-              />
-              <Text
-                style={[
-                  styles.controlButtonText,
-                  !isRunning
-                    ? styles.controlButtonTextDisabled
-                    : styles.stopButtonText,
-                ]}
-              >
-                Stop
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+              <View style={styles.titleRow}>
+                <Text style={styles.topBarTitle}>WATER DISTRIBUTION</Text>
+              </View>
 
-        {/* Areas List */}
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {areas.map((area) => (
-            <View key={area.id} style={styles.areaCard}>
-              <View style={styles.areaHeader}>
-                <Text style={styles.areaName}>{area.name}</Text>
-                <View style={styles.areaStatus}>
-                  <View
-                    style={[
-                      styles.statusDot,
-                      area.status === "active"
-                        ? styles.statusActive
-                        : styles.statusInactive,
-                    ]}
+              <View style={styles.placeholder} />
+            </View>
+
+            {/* ── Start / Stop Controls ── */}
+            <View style={styles.controlsContainer}>
+              {/* Status indicator */}
+              <View style={styles.statusRow}>
+                <View
+                  style={[
+                    styles.statusPulse,
+                    isRunning ? styles.pulseActive : styles.pulseIdle,
+                  ]}
+                />
+                <Text style={styles.statusLabel}>
+                  {isRunning ? "System Running" : "System Stopped"}
+                </Text>
+              </View>
+
+              <View style={styles.buttonRow}>
+                {/* Start Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.controlButton,
+                    styles.startButton,
+                    isRunning && styles.startButtonDisabled,
+                  ]}
+                  onPress={handleStart}
+                  activeOpacity={isRunning ? 1 : 0.8}
+                  disabled={isRunning || sending || !system}
+                >
+                  <FontAwesome
+                    name="play"
+                    size={14}
+                    color={isRunning ? colors.grayText : "#fff"}
                   />
-                  <Text style={styles.statusText}>
-                    {area.status === "active" ? "Active" : "Inactive"}
+                  <Text
+                    style={[
+                      styles.controlButtonText,
+                      isRunning
+                        ? styles.controlButtonTextDisabled
+                        : styles.startButtonText,
+                    ]}
+                  >
+                    Start
                   </Text>
-                </View>
-              </View>
+                </TouchableOpacity>
 
-              {/* Area Stats */}
-              <View style={styles.areaStats}>
-                <View style={styles.statItem}>
+                {/* Stop Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.controlButton,
+                    styles.stopButton,
+                    !isRunning && styles.stopButtonDisabled,
+                  ]}
+                  onPress={handleStop}
+                  activeOpacity={!isRunning ? 1 : 0.8}
+                  disabled={!isRunning || sending || !system}
+                >
                   <FontAwesome
-                    name="tachometer"
+                    name="stop"
                     size={14}
-                    color={colors.grayText}
+                    color={!isRunning ? colors.grayText : colors.danger}
                   />
-                  <Text style={styles.statLabel}>Flow Rate</Text>
-                  <Text style={styles.statValue}>{area.flowRate}</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <FontAwesome name="tint" size={14} color={colors.grayText} />
-                  <Text style={styles.statLabel}>Volume</Text>
-                  <Text style={styles.statValue}>{area.volume}</Text>
-                </View>
-              </View>
-
-              {/* Progress Bar */}
-              <View style={styles.progressContainer}>
-                <View style={styles.progressBar}>
-                  <View
+                  <Text
                     style={[
-                      styles.progressFill,
-                      {
-                        width: `${area.progress}%`,
-                        backgroundColor:
-                          area.status === "active"
-                            ? colors.primary
-                            : colors.grayBorder,
-                      },
+                      styles.controlButtonText,
+                      !isRunning
+                        ? styles.controlButtonTextDisabled
+                        : styles.stopButtonText,
                     ]}
-                  />
-                  {area.status === "active" && (
-                    <View style={styles.dotsContainer}>
-                      {[...Array(Math.floor(area.progress / 8))].map((_, i) => (
-                        <View key={i} style={styles.dot} />
-                      ))}
+                  >
+                    Stop
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Areas List */}
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {areas.map((area) => (
+                <View key={area.id} style={styles.areaCard}>
+                  <View style={styles.areaHeader}>
+                    <Text style={styles.areaName}>{area.name}</Text>
+                    <View style={styles.areaStatus}>
+                      <View
+                        style={[
+                          styles.statusDot,
+                          area.status === "active"
+                            ? styles.statusActive
+                            : styles.statusInactive,
+                        ]}
+                      />
+                      <Text style={styles.statusText}>
+                        {area.status === "active" ? "Active" : "Inactive"}
+                      </Text>
                     </View>
-                  )}
+                  </View>
+
+                  {/* Area Stats */}
+                  <View style={styles.areaStats}>
+                    <View style={styles.statItem}>
+                      <FontAwesome
+                        name="tachometer"
+                        size={14}
+                        color={colors.grayText}
+                      />
+                      <Text style={styles.statLabel}>Flow Rate</Text>
+                      <Text style={styles.statValue}>{area.flowRate}</Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <FontAwesome
+                        name="tint"
+                        size={14}
+                        color={colors.grayText}
+                      />
+                      <Text style={styles.statLabel}>Volume</Text>
+                      <Text style={styles.statValue}>{area.volume}</Text>
+                    </View>
+                  </View>
+
+                  {/* Progress Bar */}
+                  <View style={styles.progressContainer}>
+                    <View style={styles.progressBar}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          {
+                            width: `${area.progress}%`,
+                            backgroundColor:
+                              area.status === "active"
+                                ? colors.primary
+                                : colors.grayBorder,
+                          },
+                        ]}
+                      />
+                      {area.status === "active" && (
+                        <View style={styles.dotsContainer}>
+                          {[...Array(Math.floor(area.progress / 8))].map(
+                            (_, i) => (
+                              <View key={i} style={styles.dot} />
+                            ),
+                          )}
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.progressText}>{area.progress}%</Text>
+                  </View>
+
+                  {/* Area Controls */}
+                  <View style={styles.areaControls}>
+                    <TouchableOpacity style={styles.areaControlButton}>
+                      <FontAwesome
+                        name={area.status === "active" ? "pause" : "play"}
+                        size={14}
+                        color={colors.primary}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.areaControlButton}>
+                      <FontAwesome
+                        name="cog"
+                        size={14}
+                        color={colors.grayText}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.areaControlButton}>
+                      <FontAwesome
+                        name="info-circle"
+                        size={14}
+                        color={colors.grayText}
+                      />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <Text style={styles.progressText}>{area.progress}%</Text>
-              </View>
+              ))}
 
-              {/* Area Controls */}
-              <View style={styles.areaControls}>
-                <TouchableOpacity style={styles.areaControlButton}>
-                  <FontAwesome
-                    name={area.status === "active" ? "pause" : "play"}
-                    size={14}
-                    color={colors.primary}
-                  />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.areaControlButton}>
-                  <FontAwesome name="cog" size={14} color={colors.grayText} />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.areaControlButton}>
-                  <FontAwesome
-                    name="info-circle"
-                    size={14}
-                    color={colors.grayText}
-                  />
-                </TouchableOpacity>
+              {/* Add New Area Card */}
+              <TouchableOpacity
+                style={styles.addAreaCard}
+                onPress={handleAddArea}
+                activeOpacity={0.7}
+              >
+                <View style={styles.addAreaIcon}>
+                  <FontAwesome name="plus" size={24} color={colors.primary} />
+                </View>
+                <Text style={styles.addAreaText}>Add New Area</Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+            {/* Footer Stats */}
+            <View style={styles.footer}>
+              <View style={styles.footerStat}>
+                <Text style={styles.footerStatLabel}>Total Flow</Text>
+                <Text style={styles.footerStatValue}>
+                  {isRunning ? "1.2 L/min" : "0 L/min"}
+                </Text>
+              </View>
+              <View style={styles.footerDivider} />
+              <View style={styles.footerStat}>
+                <Text style={styles.footerStatLabel}>Active Zones</Text>
+                <Text style={styles.footerStatValue}>
+                  {isRunning ? "1/1" : "0/1"}
+                </Text>
+              </View>
+              <View style={styles.footerDivider} />
+              <View style={styles.footerStat}>
+                <Text style={styles.footerStatLabel}>Today Usage</Text>
+                <Text style={styles.footerStatValue}>45 L</Text>
               </View>
             </View>
-          ))}
-
-          {/* Add New Area Card */}
-          <TouchableOpacity
-            style={styles.addAreaCard}
-            onPress={handleAddArea}
-            activeOpacity={0.7}
-          >
-            <View style={styles.addAreaIcon}>
-              <FontAwesome name="plus" size={24} color={colors.primary} />
-            </View>
-            <Text style={styles.addAreaText}>Add New Area</Text>
-          </TouchableOpacity>
-        </ScrollView>
-
-        {/* Footer Stats */}
-        <View style={styles.footer}>
-          <View style={styles.footerStat}>
-            <Text style={styles.footerStatLabel}>Total Flow</Text>
-            <Text style={styles.footerStatValue}>
-              {isRunning ? "1.2 L/min" : "0 L/min"}
-            </Text>
-          </View>
-          <View style={styles.footerDivider} />
-          <View style={styles.footerStat}>
-            <Text style={styles.footerStatLabel}>Active Zones</Text>
-            <Text style={styles.footerStatValue}>
-              {isRunning ? "1/1" : "0/1"}
-            </Text>
-          </View>
-          <View style={styles.footerDivider} />
-          <View style={styles.footerStat}>
-            <Text style={styles.footerStatLabel}>Today Usage</Text>
-            <Text style={styles.footerStatValue}>45 L</Text>
-          </View>
-        </View>
           </>
         )}
       </View>
