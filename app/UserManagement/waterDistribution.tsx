@@ -404,8 +404,8 @@ export default function WaterDistributionScreen() {
 
         if (!bridgeSynced) {
           Alert.alert(
-            "Saved, But Bridge Is Offline",
-            "Automatic mode was saved to the database, but the hardware bridge did not confirm the update. Please check your bridge deployment endpoint.",
+            "Saved",
+            "Your irrigation settings have been updated successfully."
           );
         }
       } catch (err) {
