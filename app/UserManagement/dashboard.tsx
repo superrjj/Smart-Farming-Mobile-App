@@ -12,6 +12,7 @@ import {
   ImageBackground,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,8 +27,6 @@ import Svg, {
   LinearGradient as SvgLinearGradient,
 } from "react-native-svg";
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
 import { isAdminRole } from "@/lib/isAdminRole";
 import { clearAllStorage, getLoggedInEmail } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
@@ -36,7 +35,6 @@ import { getWeatherData } from "../../lib/weatherConfig";
 // ── Config ─────────────────────────────────────────────────────────────────
 const DEFAULT_COORDS = { latitude: 15.53, longitude: 120.6042 };
 
-const AUTO_IRRIGATION_MODE_KEY = "dashboard_auto_irrigation_mode";
 const AUTO_MODE_COLUMN = "auto_mode_enabled";
 const DEFAULT_IRRIGATION_BRIDGE_URL =
   "https://arduino-bridge.commanderzale08.workers.dev";
@@ -469,6 +467,8 @@ export default function DashboardScreen() {
   const [forecastLoading, setForecastLoading] = useState(true);
 
   // ── Fetch sensor data ──
+  // Replace your existing fetchSensorData useEffect with this:
+
   useEffect(() => {
     const fetchSensorData = async () => {
       try {
@@ -479,13 +479,10 @@ export default function DashboardScreen() {
           .order("timestamp", { ascending: false })
           .limit(1)
           .maybeSingle();
-
         if (soilData) {
           const raw = Number(soilData.value);
-          // Match admin conversion: higher raw = drier (inverted ADC scale)
           const percent = Math.round(((1023 - raw) / 1023) * 100);
-          const clamped = Math.min(100, Math.max(0, percent));
-          setSoilMoisturePercent(clamped);
+          setSoilMoisturePercent(Math.min(100, Math.max(0, percent)));
         }
 
         const { data: tempData } = await supabase
@@ -520,11 +517,49 @@ export default function DashboardScreen() {
       } catch (error) {
         console.error("Error fetching sensor data:", error);
       } finally {
-        setSensorLoading(false);
+        setSensorLoading(false); // ← now actually used
       }
     };
 
-    fetchSensorData();
+    fetchSensorData(); // initial load
+
+    // Subscribe to realtime inserts on sensor_reading
+    const channel = supabase
+      .channel("dashboard-sensor-readings")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "sensor_reading",
+        },
+        (payload) => {
+          const row = payload.new as {
+            sensor_id: number;
+            value: number;
+            timestamp: string;
+          };
+
+          if (row.sensor_id === 3) {
+            const raw = Number(row.value);
+            const percent = Math.round(((1023 - raw) / 1023) * 100);
+            const clamped = Math.min(100, Math.max(0, percent));
+            setSoilMoisturePercent(clamped);
+            setLastUpdated(row.timestamp);
+          } else if (row.sensor_id === 1) {
+            setTemperatureValue(Math.round(row.value * 10) / 10);
+            setLastUpdated(row.timestamp);
+          } else if (row.sensor_id === 2) {
+            setHumidityPercent(Math.round(row.value));
+            setLastUpdated(row.timestamp);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, []);
 
   // ── Fetch 7-day forecast ──
@@ -543,143 +578,10 @@ export default function DashboardScreen() {
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [nextScheduleTime, setNextScheduleTime] = useState<string>("");
   const [scheduleLoading, setScheduleLoading] = useState(true);
-  const [autoIrrigationModeOn, setAutoIrrigationModeOn] = useState(false);
-  const [supportsAutoModeColumn, setSupportsAutoModeColumn] = useState(true);
   const [profileSource, setProfileSource] = useState<UserProfileSource | null>(
     null,
   );
-
-  const [autoIrrigationConfirmOpen, setAutoIrrigationConfirmOpen] =
-    useState(false);
-  const [autoIrrigationPendingOn, setAutoIrrigationPendingOn] = useState(true);
-  const [irrigationSystem, setIrrigationSystem] =
-    useState<IrrigationSystemRow | null>(null);
   const drawerX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
-
-  const syncIrrigationStateToBridge = useCallback(
-    async ({
-      systemId,
-      autoModeEnabled,
-      pumpStatus,
-    }: {
-      systemId: number;
-      autoModeEnabled: boolean;
-      pumpStatus: boolean;
-    }) => {
-      const configuredBridgeUrl =
-        process.env.EXPO_PUBLIC_ARDUINO_BRIDGE_URL?.trim() || "";
-      const candidateBaseUrls = [
-        configuredBridgeUrl,
-        DEFAULT_IRRIGATION_BRIDGE_URL,
-      ].filter((url, idx, arr): url is string => {
-        const normalized = url.trim();
-        if (!normalized) return false;
-        return arr.findIndex((item) => item.trim() === normalized) === idx;
-      });
-
-      const payload = {
-        system_id: systemId,
-        auto_mode_enabled: autoModeEnabled,
-        pump_status: pumpStatus,
-      };
-      let lastFailure:
-        | {
-            endpoint: string;
-            status?: number;
-            responseText?: string;
-            bridgeError?: unknown;
-          }
-        | undefined;
-
-      for (const baseUrl of candidateBaseUrls) {
-        const endpoint = `${baseUrl.replace(/\/$/, "")}/api/irrigation-state`;
-        try {
-          const response = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          const responseText = await response.text().catch(() => "");
-          if (!response.ok) {
-            lastFailure = {
-              endpoint,
-              status: response.status,
-              responseText,
-            };
-            continue;
-          }
-
-          let parsed: {
-            auto_mode_enabled?: unknown;
-            pump_status?: unknown;
-          } | null = null;
-          try {
-            parsed = responseText ? JSON.parse(responseText) : null;
-          } catch {
-            parsed = null;
-          }
-
-          const hasExpectedShape =
-            !!parsed &&
-            typeof parsed.auto_mode_enabled === "boolean" &&
-            typeof parsed.pump_status === "boolean";
-          if (hasExpectedShape) {
-            return true;
-          }
-
-          // Some deployments may return {"ok":true} or plain text ("OK") but not state.
-          // Treat those as unsuccessful so we can try the next candidate host.
-          lastFailure = {
-            endpoint,
-            status: response.status,
-            responseText,
-          };
-        } catch (bridgeError) {
-          lastFailure = {
-            endpoint,
-            bridgeError,
-          };
-        }
-      }
-
-      console.warn("[AutoToggle] Bridge sync failed for all endpoints", {
-        candidates: candidateBaseUrls,
-        ...lastFailure,
-      });
-      return false;
-    },
-    [],
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        let stored = await AsyncStorage.getItem(AUTO_IRRIGATION_MODE_KEY);
-        if (stored == null) {
-          stored = await AsyncStorage.getItem(
-            "dashboard_prototype_auto_irrigation",
-          );
-        }
-        if (!cancelled && stored === "1") setAutoIrrigationModeOn(true);
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const openAutoIrrigationConfirm = useCallback(() => {
-    setAutoIrrigationPendingOn(!autoIrrigationModeOn);
-    setAutoIrrigationConfirmOpen(true);
-    void Haptics.selectionAsync();
-  }, [autoIrrigationModeOn]);
-
-  const cancelAutoIrrigationConfirm = useCallback(() => {
-    setAutoIrrigationConfirmOpen(false);
-  }, []);
 
   const getActiveScheduleId = useCallback(async (uid: string) => {
     const { data: schedules } = await supabase
@@ -706,7 +608,7 @@ export default function DashboardScreen() {
       : (scheduleIds[0] ?? null);
   }, []);
 
-  const applyAutoIrrigationMode = useCallback(
+  /* const applyAutoIrrigationMode = useCallback(
     async (on: boolean) => {
       try {
         let effectiveUserId = userId ?? null;
@@ -1097,7 +999,7 @@ export default function DashboardScreen() {
       syncIrrigationStateToBridge,
       userId,
     ],
-  );
+  ); */
 
   const timeToMinutes = (timeStr: string): number => {
     try {
@@ -1197,7 +1099,7 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  const ensureIrrigationSystem = useCallback(
+  /* const ensureIrrigationSystem = useCallback(
     async (profile: UserProfileSource): Promise<IrrigationSystemRow | null> => {
       const ownerCandidates = toOwnerIdCandidates(profile);
       let farm: { id: number | string } | null = null;
@@ -1324,7 +1226,7 @@ export default function DashboardScreen() {
       return null;
     },
     [],
-  );
+  ); */
 
   useFocusEffect(
     useCallback(() => {
@@ -1371,7 +1273,6 @@ export default function DashboardScreen() {
           setUserId(data.id);
           setProfileSource(data as UserProfileSource);
           fetchNextSchedule(data.id);
-          void ensureIrrigationSystem(data as UserProfileSource);
         } else {
           console.warn("[Dashboard] Profile lookup failed", {
             lookupEmail,
@@ -1387,9 +1288,9 @@ export default function DashboardScreen() {
       }
     };
     fetchProfile();
-  }, [email, ensureIrrigationSystem, fetchNextSchedule]);
+  }, [email, fetchNextSchedule]);
 
-  useEffect(() => {
+  /* useEffect(() => {
     if (!irrigationSystem?.id) return;
     const channel = supabase
       .channel(`dashboard-irrigation-system-${irrigationSystem.id}`)
@@ -1456,7 +1357,7 @@ export default function DashboardScreen() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [irrigationSystem?.id]);
+  }, [irrigationSystem?.id]); */
 
   useEffect(() => {
     Animated.timing(drawerX, {
@@ -1692,6 +1593,77 @@ export default function DashboardScreen() {
     ]);
   };
 
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        // Re-fetch sensors
+        (async () => {
+          const { data: soilData } = await supabase
+            .from("sensor_reading")
+            .select("value, timestamp")
+            .eq("sensor_id", 3)
+            .order("timestamp", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (soilData) {
+            const raw = Number(soilData.value);
+            const percent = Math.round(((1023 - raw) / 1023) * 100);
+            setSoilMoisturePercent(Math.min(100, Math.max(0, percent)));
+          }
+
+          const { data: tempData } = await supabase
+            .from("sensor_reading")
+            .select("value, timestamp")
+            .eq("sensor_id", 1)
+            .order("timestamp", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (tempData)
+            setTemperatureValue(Math.round(tempData.value * 10) / 10);
+
+          const { data: humidData } = await supabase
+            .from("sensor_reading")
+            .select("value, timestamp")
+            .eq("sensor_id", 2)
+            .order("timestamp", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (humidData) setHumidityPercent(Math.round(humidData.value));
+
+          const timestamps = [
+            soilData?.timestamp,
+            tempData?.timestamp,
+            humidData?.timestamp,
+          ].filter(Boolean) as string[];
+          if (timestamps.length > 0) {
+            const latest = timestamps.reduce((a, b) =>
+              new Date(a) > new Date(b) ? a : b,
+            );
+            setLastUpdated(latest);
+          }
+        })(),
+
+        // Re-fetch forecast
+        getWeatherData(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude)
+          .then(setForecastData)
+          .catch(() => {}),
+
+        // Re-fetch notifications
+        fetchNotifications(),
+
+        // Re-fetch next schedule
+        userId ? fetchNextSchedule(userId) : Promise.resolve(),
+      ]);
+    } catch (e) {
+      console.error("Refresh error:", e);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchNotifications, fetchNextSchedule, userId]);
+
   const handleMenuNavigate = (itemKey: string) => {
     setMenuOpen(false);
     if (itemKey === "weather") {
@@ -1844,6 +1816,16 @@ export default function DashboardScreen() {
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#3E9B4F"]} // Android spinner color
+              tintColor="#3E9B4F" // iOS spinner color
+              title="Refreshing..." // iOS only
+              titleColor="#3E9B4F" // iOS only
+            />
+          }
         >
           <ImageBackground
             source={require("@/assets/images/bg_string_beans.png")}
@@ -1908,32 +1890,27 @@ export default function DashboardScreen() {
               </View>
               <View style={styles.heroRight}>
                 <Pressable
-                  onPress={openAutoIrrigationConfirm}
                   style={({ pressed }) => [
                     styles.heroAutoBadge,
-                    autoIrrigationModeOn
-                      ? styles.heroAutoBadgeOn
-                      : styles.heroAutoBadgeOff,
+                    styles.heroAutoBadgeOff,
                     pressed && styles.heroAutoBadgePressed,
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel={
-                    autoIrrigationModeOn
-                      ? "Automatic irrigation is on, tap to change"
-                      : "Automatic irrigation is off, tap to change"
+                  accessibilityLabel="Open irrigation controls"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/UserManagement/waterDistribution",
+                      params: { email },
+                    })
                   }
                 >
                   <FontAwesome
-                    name={autoIrrigationModeOn ? "check" : "power-off"}
+                    name="tint"
                     size={10}
                     color="#fff"
                   />
                   <Text style={styles.heroAutoBadgeText}>
-                    {supportsAutoModeColumn
-                      ? autoIrrigationModeOn
-                        ? "On"
-                        : "Off"
-                      : "Setup"}
+                    Irrigation
                   </Text>
                 </Pressable>
               </View>
@@ -2249,75 +2226,7 @@ export default function DashboardScreen() {
           </View>
         </Modal>
 
-        {/* ── Automatic irrigation confirm ── */}
-        <Modal
-          visible={autoIrrigationConfirmOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={cancelAutoIrrigationConfirm}
-        >
-          <View style={styles.popupBackdrop}>
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              onPress={cancelAutoIrrigationConfirm}
-            />
-            <View style={styles.autoIrrigationModalCard}>
-              <View
-                style={[
-                  styles.autoIrrigationModalIconWrap,
-                  autoIrrigationPendingOn
-                    ? styles.autoIrrigationModalIconOn
-                    : styles.autoIrrigationModalIconOff,
-                ]}
-              >
-                <FontAwesome
-                  name={autoIrrigationPendingOn ? "toggle-on" : "toggle-off"}
-                  size={22}
-                  color={
-                    autoIrrigationPendingOn ? colors.brandGreen : "#64748B"
-                  }
-                />
-              </View>
-              <Text style={styles.popupTitle}>
-                {autoIrrigationPendingOn
-                  ? "Turn on automatic irrigation?"
-                  : "Turn off automatic irrigation?"}
-              </Text>
-              <Text style={styles.popupMessage}>
-                {autoIrrigationPendingOn
-                  ? "When automatic irrigation is on, your hardware controls the pump using soil moisture thresholds (dry/wet). Manual pump commands are paused until you switch this off."
-                  : "Turning this off stops threshold-based automatic pumping. You can then control the pump manually from your app controls."}
-              </Text>
-              <View style={styles.autoIrrigationModalActions}>
-                <TouchableOpacity
-                  style={styles.autoIrrigationModalCancel}
-                  onPress={cancelAutoIrrigationConfirm}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.autoIrrigationModalCancelText}>
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.autoIrrigationModalConfirm,
-                    autoIrrigationPendingOn
-                      ? styles.autoIrrigationModalConfirmOn
-                      : styles.autoIrrigationModalConfirmOff,
-                  ]}
-                  onPress={() =>
-                    applyAutoIrrigationMode(autoIrrigationPendingOn)
-                  }
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.autoIrrigationModalConfirmText}>
-                    {autoIrrigationPendingOn ? "Turn on" : "Turn off"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
+        {/* Irrigation controls moved to Water Distribution screen. */}
 
         {menuOpen && (
           <Pressable

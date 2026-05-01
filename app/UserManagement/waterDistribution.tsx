@@ -2,7 +2,7 @@ import { fontScale, scale } from "@/lib/responsive";
 import { supabase } from "@/lib/supabase";
 import { FontAwesome } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -33,6 +33,8 @@ const fonts = {
   bold: "Poppins_700Bold",
 };
 
+type IrrigationMode = "automatic" | "manual";
+
 const AUTO_MODE_COLUMN = "auto_mode_enabled";
 const isMissingAutoModeColumnError = (error: unknown): boolean => {
   const message =
@@ -41,6 +43,9 @@ const isMissingAutoModeColumnError = (error: unknown): boolean => {
       : "";
   return message.toLowerCase().includes(AUTO_MODE_COLUMN);
 };
+
+const DEFAULT_IRRIGATION_BRIDGE_URL =
+  "https://arduino-bridge-production.up.railway.app";
 
 const AREAS_DATA = [
   {
@@ -96,6 +101,94 @@ export default function WaterDistributionScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [supportsAutoModeColumn, setSupportsAutoModeColumn] = useState(true);
+  const [irrigationMode, setIrrigationMode] = useState<IrrigationMode>("manual");
+
+  const isAutoEnabled = Boolean(system?.auto_mode_enabled);
+  const activeMode: IrrigationMode = useMemo(() => {
+    // If auto is enabled in DB, we treat the "effective" mode as automatic.
+    return isAutoEnabled ? "automatic" : irrigationMode;
+  }, [irrigationMode, isAutoEnabled]);
+
+  const syncIrrigationStateToBridge = useCallback(
+    async ({
+      systemId,
+      autoModeEnabled,
+      pumpStatus,
+    }: {
+      systemId: number;
+      autoModeEnabled: boolean;
+      pumpStatus: boolean;
+    }): Promise<boolean> => {
+      const configuredBridgeUrl =
+        process.env.EXPO_PUBLIC_ARDUINO_BRIDGE_URL?.trim() || "";
+      // Only use configured bridge (or the Railway default).
+      // The legacy workers.dev bridge returns sensor-reading errors for this endpoint.
+      const candidateBaseUrls = [
+        configuredBridgeUrl || DEFAULT_IRRIGATION_BRIDGE_URL,
+      ].filter((url, idx, arr): url is string => {
+        const normalized = url.trim();
+        if (!normalized) return false;
+        return arr.findIndex((item) => item.trim() === normalized) === idx;
+      });
+
+      const payload = {
+        system_id: systemId,
+        auto_mode_enabled: autoModeEnabled,
+        pump_status: pumpStatus,
+      };
+
+      let lastFailure:
+        | {
+            endpoint: string;
+            status?: number;
+            responseText?: string;
+            bridgeError?: unknown;
+          }
+        | undefined;
+
+      for (const baseUrl of candidateBaseUrls) {
+        const endpoint = `${baseUrl.replace(/\/$/, "")}/api/irrigation-state`;
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const responseText = await response.text().catch(() => "");
+          if (!response.ok) {
+            lastFailure = { endpoint, status: response.status, responseText };
+            continue;
+          }
+
+          let parsed: { auto_mode_enabled?: unknown; pump_status?: unknown } | null =
+            null;
+          try {
+            parsed = responseText ? JSON.parse(responseText) : null;
+          } catch {
+            parsed = null;
+          }
+
+          const hasExpectedShape =
+            !!parsed &&
+            typeof parsed.auto_mode_enabled === "boolean" &&
+            typeof parsed.pump_status === "boolean";
+          if (hasExpectedShape) return true;
+
+          lastFailure = { endpoint, status: response.status, responseText };
+        } catch (bridgeError) {
+          lastFailure = { endpoint, bridgeError };
+        }
+      }
+
+      console.warn("[Irrigation] Bridge sync failed for all endpoints", {
+        candidates: candidateBaseUrls,
+        ...lastFailure,
+      });
+      return false;
+    },
+    [],
+  );
 
   useEffect(() => {
     const init = async () => {
@@ -161,6 +254,7 @@ export default function WaterDistributionScreen() {
           existingSystemError &&
           isMissingAutoModeColumnError(existingSystemError)
         ) {
+          setSupportsAutoModeColumn(false);
           const { data: existingNoAuto, error: existingNoAutoError } =
             await supabase
               .from("irrigation_system")
@@ -172,13 +266,16 @@ export default function WaterDistributionScreen() {
           if (existingNoAuto) {
             setSystem(existingNoAuto as IrrigationSystemRow);
             setIsRunning(Boolean(existingNoAuto.pump_status));
+            setIrrigationMode("manual");
             return;
           }
         }
 
         if (existingSystem) {
+          setSupportsAutoModeColumn(true);
           setSystem(existingSystem as IrrigationSystemRow);
           setIsRunning(Boolean(existingSystem.pump_status));
+          setIrrigationMode(existingSystem.auto_mode_enabled ? "automatic" : "manual");
           return;
         }
 
@@ -195,6 +292,7 @@ export default function WaterDistributionScreen() {
           .select("id, farm_id, system_name, pump_status, auto_mode_enabled")
           .single();
         if (createError && isMissingAutoModeColumnError(createError)) {
+          setSupportsAutoModeColumn(false);
           const { data: createdNoAuto, error: createdNoAutoError } =
             await supabase
               .from("irrigation_system")
@@ -210,12 +308,15 @@ export default function WaterDistributionScreen() {
           if (createdNoAutoError) throw createdNoAutoError;
           setSystem(createdNoAuto as IrrigationSystemRow);
           setIsRunning(false);
+          setIrrigationMode("manual");
           return;
         }
         if (createError) throw createError;
 
+        setSupportsAutoModeColumn(true);
         setSystem(createdSystem as IrrigationSystemRow);
         setIsRunning(false);
+        setIrrigationMode(createdSystem.auto_mode_enabled ? "automatic" : "manual");
       } catch (err) {
         console.error("Failed to initialize irrigation system:", err);
       } finally {
@@ -225,6 +326,109 @@ export default function WaterDistributionScreen() {
 
     void init();
   }, [email]);
+
+  const applyAutoIrrigationMode = useCallback(
+    async (on: boolean) => {
+      if (!system?.id || sending) return;
+      if (!supportsAutoModeColumn) {
+        Alert.alert(
+          "Database Update Needed",
+          "Please add irrigation_system.auto_mode_enabled in Supabase before using automatic irrigation.",
+        );
+        return;
+      }
+
+      setSending(true);
+      try {
+        const scheduleId = await getActiveScheduleId();
+        const shouldStopPump = !on && Boolean(system.pump_status);
+        // In auto mode, hardware owns pump decisions from soil thresholds.
+        const nextPumpStatus = on ? false : shouldStopPump ? false : system.pump_status;
+
+        const { error: systemError } = await supabase
+          .from("irrigation_system")
+          .update({
+            pump_status: nextPumpStatus,
+            auto_mode_enabled: on,
+          })
+          .eq("id", system.id);
+
+        if (systemError) {
+          if (isMissingAutoModeColumnError(systemError)) {
+            setSupportsAutoModeColumn(false);
+            Alert.alert(
+              "Database Update Needed",
+              "Please add irrigation_system.auto_mode_enabled in Supabase before using automatic irrigation.",
+            );
+            return;
+          }
+          throw systemError;
+        }
+
+        const nowIso = new Date().toISOString();
+        const { error: logError } = await supabase.from("irrigation_log").insert({
+          system_id: system.id,
+          triggered_by_user_id: userId,
+          trigger_type: "Automated",
+          status: shouldStopPump ? "completed" : "idle",
+          command: on ? "auto_mode_on" : "auto_mode_off",
+          start_time: nowIso,
+          end_time: shouldStopPump ? nowIso : null,
+          duration_seconds: shouldStopPump ? 0 : null,
+          schedule_id: scheduleId,
+        });
+        if (logError) throw logError;
+
+        const bridgeSynced = await syncIrrigationStateToBridge({
+          systemId: system.id,
+          autoModeEnabled: on,
+          pumpStatus: nextPumpStatus,
+        });
+
+        setSystem((prev) =>
+          prev
+            ? {
+                ...prev,
+                auto_mode_enabled: on,
+                pump_status: Boolean(nextPumpStatus),
+              }
+            : prev,
+        );
+        setIsRunning(Boolean(nextPumpStatus));
+        setAreas((prev) =>
+          prev.map((area) => ({
+            ...area,
+            status: nextPumpStatus ? "active" : "inactive",
+          })),
+        );
+
+        if (!bridgeSynced) {
+          Alert.alert(
+            "Saved, But Bridge Is Offline",
+            "Automatic mode was saved to the database, but the hardware bridge did not confirm the update. Please check your bridge deployment endpoint.",
+          );
+        }
+      } catch (err) {
+        console.error("Failed to set automatic irrigation mode:", err);
+        Alert.alert(
+          "Update Failed",
+          err instanceof Error
+            ? err.message
+            : "Unable to change automatic irrigation mode. Please try again.",
+        );
+      } finally {
+        setSending(false);
+      }
+    },
+    [
+      areas,
+      sending,
+      supportsAutoModeColumn,
+      syncIrrigationStateToBridge,
+      system,
+      userId,
+    ],
+  );
 
   useEffect(() => {
     if (!system?.id) return;
@@ -298,10 +502,10 @@ export default function WaterDistributionScreen() {
 
   const handleStart = async () => {
     if (!system?.id || sending) return;
-    if (system.auto_mode_enabled) {
+    if (activeMode === "automatic") {
       Alert.alert(
-        "Automatic Irrigation Is On",
-        "Turn off automatic irrigation from Dashboard first before manually starting the pump.",
+        "Automatic Mode Is Selected",
+        "Switch to Manual mode before manually starting the pump.",
       );
       return;
     }
@@ -343,10 +547,10 @@ export default function WaterDistributionScreen() {
 
   const handleStop = async () => {
     if (!system?.id || sending) return;
-    if (system.auto_mode_enabled) {
+    if (activeMode === "automatic") {
       Alert.alert(
-        "Automatic Irrigation Is On",
-        "Turn off automatic irrigation from Dashboard first before manually stopping the pump.",
+        "Automatic Mode Is Selected",
+        "Switch to Manual mode before manually stopping the pump.",
       );
       return;
     }
@@ -465,78 +669,202 @@ export default function WaterDistributionScreen() {
                 <View
                   style={[
                     styles.modeChip,
-                    system?.auto_mode_enabled
+                    activeMode === "automatic"
                       ? styles.modeChipAuto
                       : styles.modeChipManual,
                   ]}
                 >
                   <Text style={styles.modeChipText}>
-                    {system?.auto_mode_enabled ? "Auto Mode" : "Manual Mode"}
+                    {activeMode === "automatic" ? "Auto Mode" : "Manual Mode"}
                   </Text>
                 </View>
               </View>
 
-              <View style={styles.buttonRow}>
-                {/* Start Button */}
+              {/* Mode selector */}
+              <View style={styles.modeSelector}>
                 <TouchableOpacity
                   style={[
-                    styles.controlButton,
-                    styles.startButton,
-                    isRunning && styles.startButtonDisabled,
+                    styles.modeOption,
+                    irrigationMode === "automatic" && styles.modeOptionActive,
                   ]}
-                  onPress={handleStart}
-                  activeOpacity={isRunning ? 1 : 0.8}
-                  disabled={
-                    isRunning || sending || !system || !!system.auto_mode_enabled
-                  }
+                  activeOpacity={0.85}
+                  onPress={() => setIrrigationMode("automatic")}
                 >
                   <FontAwesome
-                    name="play"
+                    name="refresh"
                     size={14}
-                    color={isRunning ? colors.grayText : "#fff"}
+                    color={irrigationMode === "automatic" ? "#fff" : colors.dark}
                   />
                   <Text
                     style={[
-                      styles.controlButtonText,
-                      isRunning
-                        ? styles.controlButtonTextDisabled
-                        : styles.startButtonText,
+                      styles.modeOptionText,
+                      irrigationMode === "automatic" &&
+                        styles.modeOptionTextActive,
                     ]}
                   >
-                    Start
+                    Automatic
                   </Text>
                 </TouchableOpacity>
 
-                {/* Stop Button */}
                 <TouchableOpacity
                   style={[
-                    styles.controlButton,
-                    styles.stopButton,
-                    !isRunning && styles.stopButtonDisabled,
+                    styles.modeOption,
+                    irrigationMode === "manual" && styles.modeOptionActive,
                   ]}
-                  onPress={handleStop}
-                  activeOpacity={!isRunning ? 1 : 0.8}
-                  disabled={
-                    !isRunning || sending || !system || !!system.auto_mode_enabled
-                  }
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    if (isAutoEnabled) {
+                      Alert.alert(
+                        "Turn off automatic mode?",
+                        "Automatic mode is currently ON. Turn it off to use manual controls.",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Turn off & switch",
+                            style: "destructive",
+                            onPress: () => {
+                              void applyAutoIrrigationMode(false);
+                              setIrrigationMode("manual");
+                            },
+                          },
+                        ],
+                      );
+                      return;
+                    }
+                    setIrrigationMode("manual");
+                  }}
                 >
                   <FontAwesome
-                    name="stop"
+                    name="hand-paper-o"
                     size={14}
-                    color={!isRunning ? colors.grayText : colors.danger}
+                    color={irrigationMode === "manual" ? "#fff" : colors.dark}
                   />
                   <Text
                     style={[
-                      styles.controlButtonText,
-                      !isRunning
-                        ? styles.controlButtonTextDisabled
-                        : styles.stopButtonText,
+                      styles.modeOptionText,
+                      irrigationMode === "manual" && styles.modeOptionTextActive,
                     ]}
                   >
-                    Stop
+                    Manual
                   </Text>
                 </TouchableOpacity>
               </View>
+
+              {irrigationMode === "automatic" ? (
+                <View style={styles.automaticCard}>
+                  <View style={styles.automaticHeader}>
+                    <Text style={styles.automaticTitle}>Automatic irrigation</Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.autoToggle,
+                        isAutoEnabled ? styles.autoToggleOn : styles.autoToggleOff,
+                      ]}
+                      activeOpacity={0.85}
+                      disabled={!system || sending || !supportsAutoModeColumn}
+                      onPress={() => {
+                        if (!system) return;
+                        const next = !isAutoEnabled;
+                        Alert.alert(
+                          next ? "Turn ON automatic irrigation?" : "Turn OFF automatic irrigation?",
+                          next
+                            ? "When ON, the pump is triggered by soil moisture thresholds set on the hardware."
+                            : "Turning OFF returns control to Manual mode.",
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                              text: next ? "Turn on" : "Turn off",
+                              style: next ? "default" : "destructive",
+                              onPress: () => void applyAutoIrrigationMode(next),
+                            },
+                          ],
+                        );
+                      }}
+                    >
+                      <FontAwesome
+                        name={isAutoEnabled ? "toggle-on" : "toggle-off"}
+                        size={22}
+                        color={isAutoEnabled ? colors.success : colors.grayText}
+                      />
+                      <Text style={styles.autoToggleText}>
+                        {supportsAutoModeColumn
+                          ? isAutoEnabled
+                            ? "ON"
+                            : "OFF"
+                          : "Setup"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.automaticMetaRow}>
+                    <Text style={styles.automaticMeta}>
+                      Status: {isAutoEnabled ? "Active" : "Inactive"}
+                    </Text>
+                    <Text style={styles.automaticMeta}>
+                      Thresholds: Dry &gt; 500, Wet &lt; 300
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.buttonRow}>
+                  {/* Start Button */}
+                  <TouchableOpacity
+                    style={[
+                      styles.controlButton,
+                      styles.startButton,
+                      isRunning && styles.startButtonDisabled,
+                    ]}
+                    onPress={handleStart}
+                    activeOpacity={isRunning ? 1 : 0.8}
+                    disabled={isRunning || sending || !system || activeMode === "automatic"}
+                  >
+                    <FontAwesome
+                      name="play"
+                      size={14}
+                      color={isRunning ? colors.grayText : "#fff"}
+                    />
+                    <Text
+                      style={[
+                        styles.controlButtonText,
+                        isRunning
+                          ? styles.controlButtonTextDisabled
+                          : styles.startButtonText,
+                      ]}
+                    >
+                      Start
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Stop Button */}
+                  <TouchableOpacity
+                    style={[
+                      styles.controlButton,
+                      styles.stopButton,
+                      !isRunning && styles.stopButtonDisabled,
+                    ]}
+                    onPress={handleStop}
+                    activeOpacity={!isRunning ? 1 : 0.8}
+                    disabled={
+                      !isRunning || sending || !system || activeMode === "automatic"
+                    }
+                  >
+                    <FontAwesome
+                      name="stop"
+                      size={14}
+                      color={!isRunning ? colors.grayText : colors.danger}
+                    />
+                    <Text
+                      style={[
+                        styles.controlButtonText,
+                        !isRunning
+                          ? styles.controlButtonTextDisabled
+                          : styles.stopButtonText,
+                      ]}
+                    >
+                      Stop
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             {/* Areas List */}
@@ -738,6 +1066,84 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.grayBorder,
     gap: 12,
+  },
+  modeSelector: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  modeOption: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.grayBorder,
+    backgroundColor: "#fff",
+  },
+  modeOptionActive: {
+    backgroundColor: colors.primaryDark,
+    borderColor: colors.primaryDark,
+  },
+  modeOptionText: {
+    fontFamily: fonts.semibold,
+    fontSize: fontScale(13),
+    color: colors.dark,
+  },
+  modeOptionTextActive: {
+    color: "#fff",
+  },
+  automaticCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.grayBorder,
+    padding: 12,
+    backgroundColor: "#F8FAFC",
+    gap: 10,
+  },
+  automaticHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  automaticTitle: {
+    fontFamily: fonts.bold,
+    fontSize: fontScale(14),
+    color: colors.dark,
+  },
+  autoToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+  autoToggleOn: {
+    backgroundColor: "#ECFDF5",
+    borderColor: "#86EFAC",
+  },
+  autoToggleOff: {
+    backgroundColor: "#F1F5F9",
+    borderColor: colors.grayBorder,
+  },
+  autoToggleText: {
+    fontFamily: fonts.bold,
+    fontSize: fontScale(12),
+    color: colors.dark,
+    letterSpacing: 0.6,
+  },
+  automaticMetaRow: {
+    gap: 4,
+  },
+  automaticMeta: {
+    fontFamily: fonts.regular,
+    fontSize: fontScale(12),
+    color: colors.grayText,
   },
   statusRow: {
     flexDirection: "row",
